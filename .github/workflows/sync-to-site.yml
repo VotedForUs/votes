@@ -1,0 +1,57 @@
+name: Sync Content to Site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'content/**'
+  workflow_dispatch:
+
+concurrency:
+  group: sync-to-site
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout votes repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Checkout site repo
+        uses: actions/checkout@v4
+        with:
+          repository: VotedForUs/site
+          token: ${{ secrets.PERSONAL_TOKEN }}
+          path: ./site
+
+      - name: Sync content to site/src/data
+        run: rsync -av --delete content/ site/src/data/
+
+      - name: Check for site data changes
+        id: check-changes
+        run: |
+          cd site
+          if git diff --quiet -- src/data/; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create pull request in site repo
+        if: steps.check-changes.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.PERSONAL_TOKEN }}
+          path: ./site
+          commit-message: "data: sync from votes@${{ github.sha }}"
+          branch: sync/votes-content-${{ github.sha }}
+          title: "Sync congressional data: ${{ github.sha }}"
+          body-path: .github/pr-body.md
+          add-paths: src/data/**
+          labels: data-sync

@@ -1,0 +1,13 @@
+{
+  "id": "S001222",
+  "bioguide": "S001222",
+  "name": "George Santos",
+  "lastName": "Santos",
+  "state": "NY",
+  "party": "Republican",
+  "district": 3,
+  "nameTitle": "Rep. George Santos (NY-3)",
+  "imageUrl": "https://www.congress.gov/img/member/s001222_200.jpg",
+  "attribution": "Image courtesy of the Member",
+  "type": "rep"
+}

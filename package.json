@@ -1,0 +1,105 @@
+{
+  "name": "@votedforus/votes",
+  "version": "1.0.0",
+  "description": "TypeScript library and CLI for fetching and analyzing U.S. Congressional floor votes from House and Senate via Congress.gov API",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./types": {
+      "types": "./dist/src/types.d.ts",
+      "import": "./dist/src/types.js"
+    }
+  },
+  "bin": {
+    "vfu": "./dist/src/cli/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build",
+    "build:typesfile": "tsc src/types.ts -d --emitDeclarationOnly --module amd --outFile ./dist/index.d.ts --skipLibCheck --moduleResolution node && tsx src/cli/index.ts types --input ./dist/index.d.ts --output ./dist/index.d.ts",
+    "build:typesfile:process": "tsx src/cli/index.ts types --input ./dist/index.d.ts --output ./dist/index.d.ts",
+    "build:schema": "ts-to-zod",
+    "legislators:generate": "tsx src/cli/index.ts legislators",
+    "legislators:generate:fresh": "tsx src/cli/index.ts legislators --clear-cache",
+    "bills:generate": "tsx src/cli/index.ts bills",
+    "voted-bills:generate": "tsx src/cli/index.ts voted-bills",
+    "voted-bills-sync:generate": "tsx src/cli/index.ts voted-bills-sync",
+    "bill": "tsx src/cli/index.ts bill",
+    "build-from-cache": "tsx src/cli/index.ts build-from-cache",
+    "test": "node --test --import tsx src/**/*.test.ts",
+    "test:types": "tsc --project tsconfig.json --noEmit",
+    "test:types:test": "tsc --project tsconfig.test.json --noEmit",
+    "test:api-congress": "node --test --experimental-test-coverage --import tsx src/api-congress-gov/*.test.ts",
+    "test:cli": "node --test --experimental-test-coverage --import tsx src/cli/*.test.ts",
+    "test:cli:types": "node --test --experimental-test-coverage --import tsx src/cli/types.test.ts",
+    "test:congress": "node --test --experimental-test-coverage --import tsx src/congress/*.test.ts",
+    "test:legislators": "node --test --experimental-test-coverage --import tsx src/legislators/*.test.ts",
+    "test:utils": "node --test --experimental-test-coverage --import tsx src/utils/*.test.ts",
+    "test:coverage": "node --experimental-test-coverage --test --import tsx src/**/*.test.ts",
+    "test:compiled": "tsc --project tsconfig.test.json && node --test dist/**/*.test.js",
+    "test:compiled:coverage": "tsc --project tsconfig.test.json && node --experimental-test-coverage --test dist/**/*.test.js"
+  },
+  "dependencies": {
+    "commander": "^14.0.2",
+    "dotenv": "^17.2.3",
+    "fast-xml-parser": "^5.3.1",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/commander": "^2.12.5",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^24.9.1",
+    "fetch-mock": "^12.6.0",
+    "mock-fs": "^5.5.0",
+    "ts-node": "^10.9.2",
+    "ts-to-zod": "^5.0.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "zod": "^4.1.13"
+  },
+  "keywords": [
+    "congress",
+    "congress-api",
+    "house",
+    "senate",
+    "representatives",
+    "votes",
+    "voting-records",
+    "api",
+    "legislation",
+    "politics",
+    "government",
+    "usa",
+    "bills"
+  ],
+  "author": "Scott Nath",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/scottnath/votes-app.git",
+    "directory": "packages/votes"
+  },
+  "homepage": "https://github.com/scottnath/votes-app/tree/main/packages/votes#readme",
+  "bugs": {
+    "url": "https://github.com/scottnath/votes-app/issues"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "overrides": {
+    "zod": "^4.1.13"
+  }
+}

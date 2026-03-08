@@ -1,0 +1,976 @@
+{
+  "actions": {
+    "count": 35,
+    "url": "https://api.congress.gov/v3/bill/119/s/2296/actions?format=json",
+    "actions": [
+      {
+        "actionCode": "H15000",
+        "actionDate": "2025-11-12",
+        "actionTime": "12:10:52",
+        "sourceSystem": {
+          "code": 2,
+          "name": "House floor actions"
+        },
+        "text": "Held at the desk.",
+        "type": "Floor"
+      },
+      {
+        "actionCode": "H14000",
+        "actionDate": "2025-11-12",
+        "actionTime": "12:02:52",
+        "sourceSystem": {
+          "code": 2,
+          "name": "House floor actions"
+        },
+        "text": "Received in the House.",
+        "type": "Floor"
+      },
+      {
+        "actionDate": "2025-11-10",
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Message on Senate action sent to the House.",
+        "type": "Floor"
+      },
+      {
+        "actionDate": "2025-10-09",
+        "recordedVotes": [
+          {
+            "chamber": "Senate",
+            "congress": 119,
+            "date": "2025-10-10T02:06:07Z",
+            "rollNumber": 570,
+            "sessionNumber": 1,
+            "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00570.xml",
+            "votes": {
+              "A000382": "Yea",
+              "B001230": "Nay",
+              "B001299": "Yea",
+              "B001261": "Yea",
+              "B001267": "Yea",
+              "B001243": "Yea",
+              "B001277": "Yea",
+              "B001303": "Yea",
+              "B001288": "Nay",
+              "B001236": "Yea",
+              "B001319": "Yea",
+              "B001305": "Yea",
+              "C000127": "Nay",
+              "C001047": "Yea",
+              "C001075": "Yea",
+              "C001035": "Yea",
+              "C001088": "Yea",
+              "C001056": "Yea",
+              "C001113": "Not Voting",
+              "C001095": "Yea",
+              "C001096": "Yea",
+              "C000880": "Yea",
+              "C001098": "Not Voting",
+              "C001114": "Yea",
+              "D000618": "Yea",
+              "D000622": "Nay",
+              "D000563": "Nay",
+              "E000295": "Yea",
+              "F000479": "Yea",
+              "F000463": "Yea",
+              "G000574": "Yea",
+              "G000555": "Yea",
+              "G000359": "Yea",
+              "G000386": "Yea",
+              "H000601": "Yea",
+              "H001076": "Yea",
+              "H001089": "Yea",
+              "H001046": "Yea",
+              "H000273": "Yea",
+              "H001042": "Yea",
+              "H001061": "Yea",
+              "H001104": "Yea",
+              "H001079": "Yea",
+              "J000293": "Yea",
+              "J000312": "Yea",
+              "K000384": "Yea",
+              "K000377": "Yea",
+              "K000393": "Yea",
+              "K000394": "Nay",
+              "K000383": "Yea",
+              "K000367": "Yea",
+              "L000575": "Yea",
+              "L000577": "Yea",
+              "L000570": "Yea",
+              "L000571": "Yea",
+              "M000133": "Nay",
+              "M001198": "Yea",
+              "M000355": "Yea",
+              "M001243": "Yea",
+              "M001176": "Nay",
+              "M001244": "Yea",
+              "M000934": "Yea",
+              "M001242": "Yea",
+              "M001190": "Yea",
+              "M001153": "Yea",
+              "M001169": "Nay",
+              "M001111": "Nay",
+              "O000174": "Yea",
+              "P000145": "Nay",
+              "P000603": "Nay",
+              "P000595": "Yea",
+              "R000122": "Yea",
+              "R000618": "Yea",
+              "R000584": "Yea",
+              "R000608": "Yea",
+              "R000605": "Yea",
+              "S000033": "Nay",
+              "S001194": "Nay",
+              "S001150": "Nay",
+              "S001227": "Yea",
+              "S000148": "Yea",
+              "S001217": "Yea",
+              "S001184": "Yea",
+              "S001181": "Yea",
+              "S001232": "Yea",
+              "S001208": "Yea",
+              "S001203": "Nay",
+              "S001198": "Yea",
+              "T000250": "Yea",
+              "T000476": "Not Voting",
+              "T000278": "Yea",
+              "V000128": "Nay",
+              "W000805": "Yea",
+              "W000790": "Yea",
+              "W000817": "Nay",
+              "W000800": "Nay",
+              "W000802": "Yea",
+              "W000437": "Yea",
+              "W000779": "Nay",
+              "Y000064": "Yea"
+            },
+            "result": "passed",
+            "senateCount": {
+              "yeas": 77,
+              "nays": 20,
+              "present": "",
+              "absent": 3
+            },
+            "votePartyTotal": [
+              {
+                "voteParty": "D",
+                "yeaTotal": 26,
+                "nayTotal": 18,
+                "presentTotal": 0,
+                "notVotingTotal": 1
+              },
+              {
+                "voteParty": "R",
+                "yeaTotal": 50,
+                "nayTotal": 1,
+                "presentTotal": 0,
+                "notVotingTotal": 2
+              },
+              {
+                "voteParty": "I",
+                "yeaTotal": 1,
+                "nayTotal": 1,
+                "presentTotal": 0,
+                "notVotingTotal": 0
+              }
+            ],
+            "voteUrl": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00570.xml",
+            "question": "On Passage of the Bill S. 2296",
+            "id": "119-S-2296-3"
+          }
+        ],
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Passed Senate under the order of 10/9/2025, having achieved 60 votes in the affirmative, with an amendment by Yea-Nay Vote. 77 - 20. Record Vote Number: 570.",
+        "type": "Floor"
+      },
+      {
+        "actionDate": "2025-10-09",
+        "committees": [
+          {
+            "name": "Armed Services Committee",
+            "systemCode": "ssas00",
+            "url": "https://api.congress.gov/v3/committee/senate/ssas00?format=json"
+          }
+        ],
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Motion by Senator Thune to recommit to Senate Committee on Armed Services with instructions to report back forthwith with the following amendment (SA 3866) withdrawn in Senate.",
+        "type": "Floor"
+      },
+      {
+        "actionDate": "2025-10-09",
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Considered by Senate.",
+        "type": "Floor"
+      },
+      {
+        "actionDate": "2025-10-08",
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Considered by Senate.",
+        "type": "Floor"
+      },
+      {
+        "actionDate": "2025-10-06",
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Considered by Senate. (consideration: CR S6943-6944)",
+        "type": "Floor"
+      },
+      {
+        "actionDate": "2025-10-01",
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Considered by Senate. (consideration: CR S6889-6893)",
+        "type": "Floor"
+      },
+      {
+        "actionDate": "2025-09-30",
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Considered by Senate.",
+        "type": "Floor"
+      },
+      {
+        "actionDate": "2025-09-29",
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Considered by Senate. (consideration: CR S6805-6813)",
+        "type": "Floor"
+      },
+      {
+        "actionDate": "2025-09-19",
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Considered by Senate. (consideration: CR S6781-6784)",
+        "type": "Floor"
+      },
+      {
+        "actionDate": "2025-09-17",
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Considered by Senate. (consideration: CR S6667)",
+        "type": "Floor"
+      },
+      {
+        "actionDate": "2025-09-16",
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Considered by Senate. (consideration: CR S6625)",
+        "type": "Floor"
+      },
+      {
+        "actionDate": "2025-09-11",
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Considered by Senate. (consideration: CR S6561)",
+        "type": "Floor"
+      },
+      {
+        "actionDate": "2025-09-10",
+        "committees": [
+          {
+            "name": "Armed Services Committee",
+            "systemCode": "ssas00",
+            "url": "https://api.congress.gov/v3/committee/senate/ssas00?format=json"
+          }
+        ],
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Motion by Senator Thune to recommit to Senate Committee on Armed Services with instructions to report back forthwith with the following amendment (SA 3866) made in Senate. (text: CR S6512)",
+        "type": "Floor"
+      },
+      {
+        "actionDate": "2025-09-10",
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Considered by Senate. (consideration: CR S6512)",
+        "type": "Floor"
+      },
+      {
+        "actionDate": "2025-09-04",
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Measure laid before Senate by motion.",
+        "type": "Floor"
+      },
+      {
+        "actionDate": "2025-09-04",
+        "recordedVotes": [
+          {
+            "chamber": "Senate",
+            "congress": 119,
+            "date": "2025-09-04T18:31:50Z",
+            "rollNumber": 503,
+            "sessionNumber": 1,
+            "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00503.xml",
+            "votes": {
+              "A000382": "Yea",
+              "B001230": "Nay",
+              "B001299": "Yea",
+              "B001261": "Yea",
+              "B001267": "Yea",
+              "B001243": "Not Voting",
+              "B001277": "Yea",
+              "B001303": "Yea",
+              "B001288": "Nay",
+              "B001236": "Yea",
+              "B001319": "Yea",
+              "B001305": "Yea",
+              "C000127": "Yea",
+              "C001047": "Not Voting",
+              "C001075": "Yea",
+              "C001035": "Yea",
+              "C001088": "Yea",
+              "C001056": "Yea",
+              "C001113": "Yea",
+              "C001095": "Yea",
+              "C001096": "Yea",
+              "C000880": "Yea",
+              "C001098": "Yea",
+              "C001114": "Yea",
+              "D000618": "Yea",
+              "D000622": "Yea",
+              "D000563": "Yea",
+              "E000295": "Yea",
+              "F000479": "Yea",
+              "F000463": "Yea",
+              "G000574": "Yea",
+              "G000555": "Yea",
+              "G000359": "Yea",
+              "G000386": "Yea",
+              "H000601": "Not Voting",
+              "H001076": "Yea",
+              "H001089": "Yea",
+              "H001046": "Yea",
+              "H000273": "Yea",
+              "H001042": "Yea",
+              "H001061": "Yea",
+              "H001104": "Yea",
+              "H001079": "Yea",
+              "J000293": "Yea",
+              "J000312": "Yea",
+              "K000384": "Yea",
+              "K000377": "Yea",
+              "K000393": "Yea",
+              "K000394": "Yea",
+              "K000383": "Yea",
+              "K000367": "Yea",
+              "L000575": "Yea",
+              "L000577": "Yea",
+              "L000570": "Yea",
+              "L000571": "Yea",
+              "M000133": "Nay",
+              "M001198": "Yea",
+              "M000355": "Yea",
+              "M001243": "Yea",
+              "M001176": "Nay",
+              "M001244": "Yea",
+              "M000934": "Yea",
+              "M001242": "Yea",
+              "M001190": "Yea",
+              "M001153": "Yea",
+              "M001169": "Yea",
+              "M001111": "Yea",
+              "O000174": "Yea",
+              "P000145": "Nay",
+              "P000603": "Nay",
+              "P000595": "Yea",
+              "R000122": "Yea",
+              "R000618": "Yea",
+              "R000584": "Yea",
+              "R000608": "Yea",
+              "R000605": "Yea",
+              "S000033": "Nay",
+              "S001194": "Nay",
+              "S001150": "Yea",
+              "S001227": "Yea",
+              "S000148": "Yea",
+              "S001217": "Yea",
+              "S001184": "Not Voting",
+              "S001181": "Yea",
+              "S001232": "Yea",
+              "S001208": "Yea",
+              "S001203": "Nay",
+              "S001198": "Yea",
+              "T000250": "Yea",
+              "T000476": "Yea",
+              "T000278": "Yea",
+              "V000128": "Nay",
+              "W000805": "Yea",
+              "W000790": "Yea",
+              "W000817": "Nay",
+              "W000800": "Nay",
+              "W000802": "Yea",
+              "W000437": "Yea",
+              "W000779": "Nay",
+              "Y000064": "Yea"
+            },
+            "result": "passed",
+            "senateCount": {
+              "yeas": 83,
+              "nays": 13,
+              "present": "",
+              "absent": 4
+            },
+            "votePartyTotal": [
+              {
+                "voteParty": "D",
+                "yeaTotal": 34,
+                "nayTotal": 11,
+                "presentTotal": 0,
+                "notVotingTotal": 0
+              },
+              {
+                "voteParty": "R",
+                "yeaTotal": 48,
+                "nayTotal": 1,
+                "presentTotal": 0,
+                "notVotingTotal": 4
+              },
+              {
+                "voteParty": "I",
+                "yeaTotal": 1,
+                "nayTotal": 1,
+                "presentTotal": 0,
+                "notVotingTotal": 0
+              }
+            ],
+            "voteUrl": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00503.xml",
+            "question": "On the Motion to Proceed S. 2296",
+            "id": "119-S-2296-2"
+          }
+        ],
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Motion to proceed to consideration of measure agreed to in Senate by Yea-Nay Vote. 83 - 13. Record Vote Number: 503. (CR S6054)",
+        "type": "Floor"
+      },
+      {
+        "actionDate": "2025-09-04",
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Motion to proceed to measure considered in Senate. (CR S6050)",
+        "type": "Floor"
+      },
+      {
+        "actionDate": "2025-09-03",
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Motion to proceed to measure considered in Senate. (CR S5989)",
+        "type": "Floor"
+      },
+      {
+        "actionDate": "2025-09-02",
+        "recordedVotes": [
+          {
+            "chamber": "Senate",
+            "congress": 119,
+            "date": "2025-09-02T22:30:44Z",
+            "rollNumber": 500,
+            "sessionNumber": 1,
+            "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00500.xml",
+            "votes": {
+              "A000382": "Yea",
+              "B001230": "Nay",
+              "B001299": "Yea",
+              "B001261": "Yea",
+              "B001267": "Yea",
+              "B001243": "Yea",
+              "B001277": "Yea",
+              "B001303": "Yea",
+              "B001288": "Nay",
+              "B001236": "Yea",
+              "B001319": "Yea",
+              "B001305": "Yea",
+              "C000127": "Yea",
+              "C001047": "Yea",
+              "C001075": "Yea",
+              "C001035": "Yea",
+              "C001088": "Yea",
+              "C001056": "Yea",
+              "C001113": "Yea",
+              "C001095": "Yea",
+              "C001096": "Yea",
+              "C000880": "Yea",
+              "C001098": "Yea",
+              "C001114": "Yea",
+              "D000618": "Yea",
+              "D000622": "Yea",
+              "D000563": "Yea",
+              "E000295": "Yea",
+              "F000479": "Yea",
+              "F000463": "Yea",
+              "G000574": "Yea",
+              "G000555": "Yea",
+              "G000359": "Yea",
+              "G000386": "Yea",
+              "H000601": "Yea",
+              "H001076": "Yea",
+              "H001089": "Yea",
+              "H001046": "Yea",
+              "H000273": "Yea",
+              "H001042": "Yea",
+              "H001061": "Yea",
+              "H001104": "Yea",
+              "H001079": "Yea",
+              "J000293": "Yea",
+              "J000312": "Yea",
+              "K000384": "Yea",
+              "K000377": "Yea",
+              "K000393": "Nay",
+              "K000394": "Yea",
+              "K000383": "Yea",
+              "K000367": "Yea",
+              "L000575": "Yea",
+              "L000577": "Yea",
+              "L000570": "Yea",
+              "L000571": "Yea",
+              "M000133": "Nay",
+              "M001198": "Yea",
+              "M000355": "Yea",
+              "M001243": "Yea",
+              "M001176": "Nay",
+              "M001244": "Yea",
+              "M000934": "Yea",
+              "M001242": "Yea",
+              "M001190": "Yea",
+              "M001153": "Yea",
+              "M001169": "Yea",
+              "M001111": "Yea",
+              "O000174": "Yea",
+              "P000145": "Nay",
+              "P000603": "Nay",
+              "P000595": "Yea",
+              "R000122": "Yea",
+              "R000618": "Yea",
+              "R000584": "Yea",
+              "R000608": "Yea",
+              "R000605": "Yea",
+              "S000033": "Nay",
+              "S001194": "Nay",
+              "S001150": "Yea",
+              "S001227": "Yea",
+              "S000148": "Yea",
+              "S001217": "Yea",
+              "S001184": "Not Voting",
+              "S001181": "Yea",
+              "S001232": "Yea",
+              "S001208": "Yea",
+              "S001203": "Nay",
+              "S001198": "Yea",
+              "T000250": "Yea",
+              "T000476": "Not Voting",
+              "T000278": "Yea",
+              "V000128": "Nay",
+              "W000805": "Yea",
+              "W000790": "Yea",
+              "W000817": "Nay",
+              "W000800": "Nay",
+              "W000802": "Yea",
+              "W000437": "Yea",
+              "W000779": "Nay",
+              "Y000064": "Yea"
+            },
+            "result": "passed",
+            "senateCount": {
+              "yeas": 84,
+              "nays": 14,
+              "present": "",
+              "absent": 2
+            },
+            "votePartyTotal": [
+              {
+                "voteParty": "D",
+                "yeaTotal": 34,
+                "nayTotal": 11,
+                "presentTotal": 0,
+                "notVotingTotal": 0
+              },
+              {
+                "voteParty": "R",
+                "yeaTotal": 49,
+                "nayTotal": 2,
+                "presentTotal": 0,
+                "notVotingTotal": 2
+              },
+              {
+                "voteParty": "I",
+                "yeaTotal": 1,
+                "nayTotal": 1,
+                "presentTotal": 0,
+                "notVotingTotal": 0
+              }
+            ],
+            "voteUrl": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00500.xml",
+            "question": "On Cloture on the Motion to Proceed S. 2296",
+            "id": "119-S-2296-1"
+          }
+        ],
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Cloture on the motion to proceed to the measure invoked in Senate by Yea-Nay Vote. 84 - 14. Record Vote Number: 500. (CR S5544)",
+        "type": "Floor"
+      },
+      {
+        "actionDate": "2025-09-02",
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Motion to proceed to measure considered in Senate. (CR S5539)",
+        "type": "Floor"
+      },
+      {
+        "actionDate": "2025-08-02",
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Cloture motion on the motion to proceed to the measure presented in Senate. (CR S5522)",
+        "type": "Floor"
+      },
+      {
+        "actionDate": "2025-08-02",
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Motion to proceed to consideration of measure made in Senate. (CR S5522)",
+        "type": "Floor"
+      },
+      {
+        "actionDate": "2025-07-15",
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "An errata sheet on written report No. 119-39 was printed.",
+        "type": "Floor"
+      },
+      {
+        "actionDate": "2025-07-15",
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Placed on Senate Legislative Calendar under General Orders. Calendar No. 115.",
+        "type": "Calendars"
+      },
+      {
+        "actionDate": "2025-07-15",
+        "committees": [
+          {
+            "name": "Armed Services Committee",
+            "systemCode": "ssas00",
+            "url": "https://api.congress.gov/v3/committee/senate/ssas00?format=json"
+          }
+        ],
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Committee on Armed Services. Original measure reported to Senate by Senator Wicker. With written report No. 119-39.",
+        "type": "Committee"
+      },
+      {
+        "actionDate": "2025-04-09",
+        "committees": [
+          {
+            "name": "Personnel Subcommittee",
+            "systemCode": "ssas17",
+            "url": "https://api.congress.gov/v3/committee/senate/ssas17?format=json"
+          }
+        ],
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Committee on Armed Services Subcommittee on Personnel. Hearings held. With printed Hearing: S.Hrg. 119-75, pt. 6.",
+        "type": "Committee"
+      },
+      {
+        "actionDate": "2025-04-09",
+        "committees": [
+          {
+            "name": "Cybersecurity Subcommittee",
+            "systemCode": "ssas21",
+            "url": "https://api.congress.gov/v3/committee/senate/ssas21?format=json"
+          }
+        ],
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Committee on Armed Services Subcommittee on Cybersecurity. Hearings held. With printed Hearing: S.Hrg. 119-75, pt. 8.",
+        "type": "Committee"
+      },
+      {
+        "actionDate": "2025-04-08",
+        "committees": [
+          {
+            "name": "Emerging Threats and Capabilities Subcommittee",
+            "systemCode": "ssas20",
+            "url": "https://api.congress.gov/v3/committee/senate/ssas20?format=json"
+          }
+        ],
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Committee on Armed Services Subcommittee on Emerging Threats and Capabilities. Hearings held. With printed Hearing: S.Hrg. 119-75, pt. 5.",
+        "type": "Committee"
+      },
+      {
+        "actionDate": "2025-03-05",
+        "committees": [
+          {
+            "name": "Readiness and Management Support Subcommittee",
+            "systemCode": "ssas15",
+            "url": "https://api.congress.gov/v3/committee/senate/ssas15?format=json"
+          }
+        ],
+        "sourceSystem": {
+          "name": "Senate"
+        },
+        "text": "Committee on Armed Services Subcommittee on Readiness and Management Support. Hearings held. With printed Hearing: S.Hrg. 119-75, pt. 3.",
+        "type": "Committee"
+      }
+    ]
+  },
+  "congress": 119,
+  "introducedDate": "2025-07-15",
+  "latestAction": {
+    "actionDate": "2025-11-12",
+    "actionTime": "12:10:52",
+    "text": "Held at the desk."
+  },
+  "legislationUrl": "https://www.congress.gov/bill/119th-congress/senate-bill/2296",
+  "number": "2296",
+  "originChamber": "Senate",
+  "originChamberCode": "S",
+  "summaries": {
+    "count": 1,
+    "url": "https://api.congress.gov/v3/bill/119/s/2296/summaries?format=json"
+  },
+  "title": "National Defense Authorization Act for Fiscal Year 2026",
+  "titles": {
+    "titles": [
+      {
+        "title": "National Defense Authorization Act for Fiscal Year 2026",
+        "titleType": "Display Title",
+        "titleTypeCode": 45,
+        "updateDate": "2026-02-25T12:03:23Z"
+      },
+      {
+        "billTextVersionCode": "ES",
+        "billTextVersionName": "Engrossed in Senate",
+        "chamberCode": "S",
+        "chamberName": "Senate",
+        "title": "GAIN AI Act of 2025",
+        "titleType": "Short Title(s) as Passed Senate for portions of this bill",
+        "titleTypeCode": 110,
+        "updateDate": "2025-10-21T11:23:15Z"
+      },
+      {
+        "billTextVersionCode": "ES",
+        "billTextVersionName": "Engrossed in Senate",
+        "chamberCode": "S",
+        "chamberName": "Senate",
+        "title": "Coast Guard Authorization Act of 2025",
+        "titleType": "Short Title(s) as Passed Senate for portions of this bill",
+        "titleTypeCode": 110,
+        "updateDate": "2025-10-21T11:23:15Z"
+      },
+      {
+        "billTextVersionCode": "ES",
+        "billTextVersionName": "Engrossed in Senate",
+        "chamberCode": "S",
+        "chamberName": "Senate",
+        "title": "Intelligence Authorization Act for Fiscal Year 2026",
+        "titleType": "Short Title(s) as Passed Senate for portions of this bill",
+        "titleTypeCode": 110,
+        "updateDate": "2025-10-21T11:23:15Z"
+      },
+      {
+        "billTextVersionCode": "ES",
+        "billTextVersionName": "Engrossed in Senate",
+        "chamberCode": "S",
+        "chamberName": "Senate",
+        "title": "Military Construction Authorization Act for Fiscal Year 2026",
+        "titleType": "Short Title(s) as Passed Senate for portions of this bill",
+        "titleTypeCode": 110,
+        "updateDate": "2025-10-21T11:23:15Z"
+      },
+      {
+        "billTextVersionCode": "ES",
+        "billTextVersionName": "Engrossed in Senate",
+        "chamberCode": "S",
+        "chamberName": "Senate",
+        "title": "National Defense Authorization Act for Fiscal Year 2026",
+        "titleType": "Short Title(s) as Passed Senate",
+        "titleTypeCode": 105,
+        "updateDate": "2025-10-21T11:23:15Z"
+      },
+      {
+        "billTextVersionCode": "ES",
+        "billTextVersionName": "Engrossed in Senate",
+        "chamberCode": "S",
+        "chamberName": "Senate",
+        "title": "COUNTER Act of 2025",
+        "titleType": "Short Title(s) as Passed Senate for portions of this bill",
+        "titleTypeCode": 110,
+        "updateDate": "2025-10-21T11:23:15Z"
+      },
+      {
+        "billTextVersionCode": "ES",
+        "billTextVersionName": "Engrossed in Senate",
+        "chamberCode": "S",
+        "chamberName": "Senate",
+        "title": "Combating PRC Overseas and Unlawful Networked Threats through Enhanced Resilience Act of 2025",
+        "titleType": "Short Title(s) as Passed Senate for portions of this bill",
+        "titleTypeCode": 110,
+        "updateDate": "2025-10-21T11:23:15Z"
+      },
+      {
+        "billTextVersionCode": "ES",
+        "billTextVersionName": "Engrossed in Senate",
+        "chamberCode": "S",
+        "chamberName": "Senate",
+        "title": "Holding Foreign Insiders Accountable Act",
+        "titleType": "Short Title(s) as Passed Senate for portions of this bill",
+        "titleTypeCode": 110,
+        "updateDate": "2025-10-21T11:23:15Z"
+      },
+      {
+        "billTextVersionCode": "ES",
+        "billTextVersionName": "Engrossed in Senate",
+        "chamberCode": "S",
+        "chamberName": "Senate",
+        "title": "PAID OFF Act of 2025",
+        "titleType": "Short Title(s) as Passed Senate for portions of this bill",
+        "titleTypeCode": 110,
+        "updateDate": "2025-10-21T11:23:15Z"
+      },
+      {
+        "billTextVersionCode": "ES",
+        "billTextVersionName": "Engrossed in Senate",
+        "chamberCode": "S",
+        "chamberName": "Senate",
+        "title": "Preventing Adversary Influence, Disinformation, and Obscured Foreign Financing Act of 2025",
+        "titleType": "Short Title(s) as Passed Senate for portions of this bill",
+        "titleTypeCode": 110,
+        "updateDate": "2025-10-21T11:23:15Z"
+      },
+      {
+        "billTextVersionCode": "ES",
+        "billTextVersionName": "Engrossed in Senate",
+        "chamberCode": "S",
+        "chamberName": "Senate",
+        "title": "International Nuclear Energy Act of 2025",
+        "titleType": "Short Title(s) as Passed Senate for portions of this bill",
+        "titleTypeCode": 110,
+        "updateDate": "2025-10-21T11:23:15Z"
+      },
+      {
+        "billTextVersionCode": "ES",
+        "billTextVersionName": "Engrossed in Senate",
+        "chamberCode": "S",
+        "chamberName": "Senate",
+        "title": "Atomic Energy Testing Liability Act",
+        "titleType": "Short Title(s) as Passed Senate for portions of this bill",
+        "titleTypeCode": 110,
+        "updateDate": "2025-10-21T11:23:15Z"
+      },
+      {
+        "billTextVersionCode": "ES",
+        "billTextVersionName": "Engrossed in Senate",
+        "chamberCode": "S",
+        "chamberName": "Senate",
+        "title": "Abducted Ukrainian Children Recovery and Accountability Act",
+        "titleType": "Short Title(s) as Passed Senate for portions of this bill",
+        "titleTypeCode": 110,
+        "updateDate": "2025-10-21T11:23:15Z"
+      },
+      {
+        "billTextVersionCode": "ES",
+        "billTextVersionName": "Engrossed in Senate",
+        "chamberCode": "S",
+        "chamberName": "Senate",
+        "title": "Retired Law Enforcement Officers Continuing Service Act",
+        "titleType": "Short Title(s) as Passed Senate for portions of this bill",
+        "titleTypeCode": 110,
+        "updateDate": "2025-10-21T11:23:15Z"
+      },
+      {
+        "billTextVersionCode": "ES",
+        "billTextVersionName": "Engrossed in Senate",
+        "chamberCode": "S",
+        "chamberName": "Senate",
+        "title": "MAPS Act",
+        "titleType": "Short Title(s) as Passed Senate for portions of this bill",
+        "titleTypeCode": 110,
+        "updateDate": "2025-10-21T11:23:15Z"
+      },
+      {
+        "billTextVersionCode": "ES",
+        "billTextVersionName": "Engrossed in Senate",
+        "chamberCode": "S",
+        "chamberName": "Senate",
+        "title": "Mapping America's Pharmaceutical Supply Act",
+        "titleType": "Short Title(s) as Passed Senate for portions of this bill",
+        "titleTypeCode": 110,
+        "updateDate": "2025-10-21T11:23:15Z"
+      },
+      {
+        "billTextVersionCode": "ES",
+        "billTextVersionName": "Engrossed in Senate",
+        "chamberCode": "S",
+        "chamberName": "Senate",
+        "title": "Preventing Child Trafficking Act of 2025",
+        "titleType": "Short Title(s) as Passed Senate for portions of this bill",
+        "titleTypeCode": 110,
+        "updateDate": "2025-10-21T11:23:15Z"
+      },
+      {
+        "billTextVersionCode": "ES",
+        "billTextVersionName": "Engrossed in Senate",
+        "chamberCode": "S",
+        "chamberName": "Senate",
+        "title": "Taiwan Non-Discrimination Act of 2025",
+        "titleType": "Short Title(s) as Passed Senate for portions of this bill",
+        "titleTypeCode": 110,
+        "updateDate": "2025-10-21T11:23:15Z"
+      },
+      {
+        "billTextVersionCode": "ES",
+        "billTextVersionName": "Engrossed in Senate",
+        "chamberCode": "S",
+        "chamberName": "Senate",
+        "title": "AUKUS Improvement Act of 2025",
+        "titleType": "Short Title(s) as Passed Senate for portions of this bill",
+        "titleTypeCode": 110,
+        "updateDate": "2025-10-21T11:23:15Z"
+      }
+    ]
+  },
+  "type": "S",
+  "updateDate": "2026-02-25T12:03:23Z",
+  "updateDateIncludingText": "2026-02-25T12:03:23Z",
+  "id": "119-S-2296",
+  "lastActionDate": "2025-11-12",
+  "lastRecordedVoteDate": "2025-10-10T02:06:07Z"
+}
