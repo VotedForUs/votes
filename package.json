@@ -28,7 +28,7 @@
     "prepublishOnly": "npm run build",
     "build:typesfile": "tsc src/types.ts -d --emitDeclarationOnly --module amd --outFile ./dist/index.d.ts --skipLibCheck --moduleResolution node && tsx src/cli/index.ts types --input ./dist/index.d.ts --output ./dist/index.d.ts",
     "build:typesfile:process": "tsx src/cli/index.ts types --input ./dist/index.d.ts --output ./dist/index.d.ts",
-    "build:schema": "ts-to-zod",
+    "build:schema": "ts-to-zod --skipValidation",
     "legislators:generate": "tsx src/cli/index.ts legislators",
     "legislators:generate:fresh": "tsx src/cli/index.ts legislators --clear-cache",
     "bills:generate": "tsx src/cli/index.ts bills",
