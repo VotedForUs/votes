@@ -43,6 +43,17 @@ jobs:
             echo "changed=true" >> $GITHUB_OUTPUT
           fi
 
+      - name: Set PR body
+        if: steps.check-changes.outputs.changed == 'true'
+        run: |
+          if [ -f .github/pr-body.md ]; then
+            echo "pr_body_path=.github/pr-body.md" >> $GITHUB_ENV
+          else
+            echo "## Data Sync" > /tmp/pr-body.md
+            echo "Synced congressional data from votes@${{ github.sha }}" >> /tmp/pr-body.md
+            echo "pr_body_path=/tmp/pr-body.md" >> $GITHUB_ENV
+          fi
+
       - name: Create pull request in site repo
         if: steps.check-changes.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@v7
@@ -52,6 +63,6 @@ jobs:
           commit-message: "data: sync from votes@${{ github.sha }}"
           branch: sync/votes-content-${{ github.sha }}
           title: "Sync congressional data: ${{ github.sha }}"
-          body-path: .github/pr-body.md
+          body-path: ${{ env.pr_body_path }}
           add-paths: src/data/**
           labels: data-sync
