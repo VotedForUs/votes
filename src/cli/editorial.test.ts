@@ -17,12 +17,14 @@ import type { BillWithActions } from "../congress/congress-api.types.js";
 
 // Test fixtures
 const createMockBill = (overrides: Partial<BillWithActions> = {}): BillWithActions => ({
+  id: "119-HR-1",
   congress: 119,
   number: "1",
   type: "HR",
   title: "Default Bill Title",
   updateDate: "2025-01-01",
-  updateDateIncludingText: "2025-01-01",
+  originChamber: "House",
+  originChamberCode: "H",
   actions: {
     count: 0,
     url: "",

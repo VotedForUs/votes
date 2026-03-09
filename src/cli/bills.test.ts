@@ -19,12 +19,13 @@ describe("CLI Bills Module", () => {
   describe("reduceBill", () => {
     test("should extract correct properties from bill", () => {
       const bill: BillWithActions = {
+        id: "119-HR-1234",
         congress: 119,
         number: "1234",
         type: "HR",
         title: "Full Title",
         url: "https://api.congress.gov/v3/bill/119/hr/1234",
-        originChamber: "HOUSE",
+        originChamber: "House",
         originChamberCode: "H",
         updateDate: "2024-10-31",
         latestAction: {
@@ -36,7 +37,7 @@ describe("CLI Bills Module", () => {
         },
       };
 
-      const reduced = reduceBill(bill);
+      const reduced = reduceBill(bill) as BillWithActions;
 
       assert.strictEqual(reduced.congress, 119);
       assert.strictEqual(reduced.title, "Full Title");
@@ -50,19 +51,20 @@ describe("CLI Bills Module", () => {
 
     test("should handle bills with missing optional fields", () => {
       const bill: BillWithActions = {
+        id: "119-HR-1234",
         congress: 119,
         number: "1234",
         type: "HR",
         title: "Title",
         url: "https://api.congress.gov/v3/bill/119/hr/1234",
-        originChamber: "HOUSE",
+        originChamber: "House",
         originChamberCode: "H",
         actions: {
           actions: [],
         },
       };
 
-      const reduced = reduceBill(bill);
+      const reduced = reduceBill(bill) as BillWithActions;
 
       assert.strictEqual(reduced.congress, 119);
       assert.strictEqual(reduced.title, "Title");
@@ -109,12 +111,13 @@ describe("CLI Bills Module", () => {
       // Add a bill without recorded votes
       const mockBills = MockCongressApi.getMockBills();
       mockBills.push({
+        id: "119-HR-9999",
         congress: 119,
         number: "9999",
         type: "HR",
         title: "No Votes Bill",
         url: "https://api.congress.gov/v3/bill/119/hr/9999",
-        originChamber: "HOUSE",
+        originChamber: "House",
         originChamberCode: "H",
         actions: {
           actions: [], // No actions means no recorded votes
@@ -295,6 +298,7 @@ describe("CLI Bills Module", () => {
       // Add more HR bills with votes to test limit
       const mockBills = MockCongressApi.getMockBills();
       mockBills.push({
+        id: "119-HR-9999",
         congress: 119,
         number: "9999",
         type: "HR",

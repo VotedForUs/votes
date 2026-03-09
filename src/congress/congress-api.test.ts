@@ -487,7 +487,7 @@ describe("CongressApi", () => {
       const actionsUrl = `https://api.congress.gov/v3/bill/119/hr/3/actions?api_key=${apiKey}&format=json&offset=0&limit=250`;
       
       fetchMock.get(billUrl, mockCongressBillResponse);
-      fetchMock.get(actionsUrl, null); // Simulate actions fetch failure
+      fetchMock.get(actionsUrl, {} as any); // Simulate actions fetch failure
 
       const billWithActions = await congressApi.getBill("HR", "3");
 
@@ -1551,7 +1551,7 @@ describe("CongressApi", () => {
 
   describe("helper methods", () => {
     test("normalizeVoteResult returns 'passed' for pass/agreed/confirmed, 'rejected' otherwise", async () => {
-      await congressApi.ensureInitialized();
+      await (congressApi as any).ensureInitialized();
       assert.strictEqual(congressApi.normalizeVoteResult("Passed"), "passed");
       assert.strictEqual(congressApi.normalizeVoteResult("Passed by Unanimous Consent"), "passed");
       assert.strictEqual(congressApi.normalizeVoteResult("Agreed to"), "passed");
