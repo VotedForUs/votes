@@ -5,7 +5,7 @@
  */
 export default 
     { "name": "typeser", 
-        "input": "./dist/index.d.ts", 
+        "input": "./dist/types.bundle.d.ts", 
         // "output": "../site/src/types.zod.ts" 
         "output": "./dist/types.zod.ts",
         // BillType is derived via `typeof BILL_TYPES[number]` which ts-to-zod

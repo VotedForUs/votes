@@ -316,6 +316,7 @@ export type SenateVoteDetails = {
 
 // Common recorded vote structure used in both actions and bill summaries
 export type RecordedVote = {
+  id?: string;
   chamber: string;
   congress: number;
   date: string;

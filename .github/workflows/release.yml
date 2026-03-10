@@ -1,0 +1,102 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      packages: write
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build TypeScript
+        run: npm run build
+
+      - name: Build types declaration file
+        run: npm run build:typesfile
+
+      - name: Build Zod schema
+        run: npm run build:schema
+
+      - name: Typecheck source
+        run: npm run test:types
+
+      - name: Typecheck tests
+        run: npm run test:types:test
+
+      - name: Run tests with coverage
+        run: npm run test:coverage
+
+      - name: Get pre-release tag
+        id: pre-release
+        run: |
+          git fetch --tags
+          echo "tag=$(git tag --sort=-version:refname | head -1)" >> $GITHUB_OUTPUT
+
+      - name: Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx semantic-release
+
+      - name: Check for new release
+        id: new-release
+        run: |
+          git fetch --tags
+          CURRENT_TAG=$(git tag --sort=-version:refname | head -1)
+          PRE_RELEASE_TAG="${{ steps.pre-release.outputs.tag }}"
+          if [ "$CURRENT_TAG" != "$PRE_RELEASE_TAG" ] && [ -n "$CURRENT_TAG" ]; then
+            echo "released=true" >> $GITHUB_OUTPUT
+            echo "version=${CURRENT_TAG#v}" >> $GITHUB_OUTPUT
+          else
+            echo "released=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout site repo to bump dependency
+        if: steps.new-release.outputs.released == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: VotedForUs/site
+          token: ${{ secrets.PERSONAL_TOKEN }}
+          path: ./site
+
+      - name: Update @votedforus/votes version in site
+        if: steps.new-release.outputs.released == 'true'
+        run: |
+          cd site
+          npm pkg set dependencies["@votedforus/votes"]="${{ steps.new-release.outputs.version }}"
+
+      - name: Create version bump PR in site repo
+        if: steps.new-release.outputs.released == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.PERSONAL_TOKEN }}
+          path: ./site
+          commit-message: "🔖 bump @votedforus/votes to ${{ steps.new-release.outputs.version }}"
+          branch: chore/bump-votes-${{ steps.new-release.outputs.version }}
+          title: "🔖 bump @votedforus/votes to ${{ steps.new-release.outputs.version }}"
+          body: |
+            Published version `${{ steps.new-release.outputs.version }}`.
+            Bumps the `@votedforus/votes` package dependency in `package.json`.
+          add-paths: package.json
+          labels: dependencies
