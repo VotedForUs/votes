@@ -16,7 +16,7 @@
     }
   },
   "bin": {
-    "vfu": "./dist/src/cli/index.js"
+    "vfu": "dist/src/cli/index.js"
   },
   "files": [
     "dist",
@@ -90,7 +90,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/VotedForUs/votes.git"
+    "url": "git+https://github.com/VotedForUs/votes.git"
   },
   "homepage": "https://github.com/VotedForUs/votes#readme",
   "bugs": {
