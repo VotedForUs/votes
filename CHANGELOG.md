@@ -1,3 +1,8 @@
+# [v1.0.2](https://github.com/VotedForUs/votes/compare/v1.0.1...v1.0.2) (2026-03-11)
+
+## 🐛 Bug Fixes
+- [`190a4a2`](https://github.com/VotedForUs/votes/commit/190a4a2)  fix git diff in daily
+
 # [v1.0.1](https://github.com/VotedForUs/votes/compare/v1.0.0...v1.0.1) (2026-03-10)
 
 ## 🐛 Bug Fixes
