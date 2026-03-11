@@ -58,7 +58,7 @@ jobs:
       - name: Check for content changes
         id: check-changes
         run: |
-          if git diff --quiet -- content/ .github/pr-body.md; then
+          if [ -z "$(git status --porcelain -- content/ .github/pr-body.md)" ]; then
             echo "changed=false" >> $GITHUB_OUTPUT
           else
             echo "changed=true" >> $GITHUB_OUTPUT
