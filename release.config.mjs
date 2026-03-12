@@ -1,27 +1,24 @@
+import { gitmojis } from 'gitmojis';
+
+const MAJOR_EMOJIS = [':boom:'];
+const MINOR_EMOJIS = [':sparkles:', ':new:'];
+const EXTRA_PATCH_EMOJIS = [':ballot_box:'];
+
+const reservedEmojis = new Set([...MAJOR_EMOJIS, ...MINOR_EMOJIS]);
+const patchEmojis = [
+  ...gitmojis.map((g) => g.code).filter((code) => !reservedEmojis.has(code)),
+  ...EXTRA_PATCH_EMOJIS,
+];
+
 /** @type {import('semantic-release').GlobalConfig} */
 export default {
   branches: ['main'],
   plugins: [
     ['semantic-release-gitmoji', {
       releaseRules: {
-        major: [':boom:'],
-        minor: [':sparkles:', ':new:'],
-        patch: [
-          ':bug:',
-          ':ambulance:',
-          ':lock:',
-          ':wrench:',
-          ':recycle:',
-          ':arrow_up:',
-          ':memo:',
-          ':test_tube:',
-          ':construction:',
-          ':art:',
-          ':fire:',
-          ':construction_worker:',
-          ':package:',
-          ':ballot_box:',
-        ],
+        major: MAJOR_EMOJIS,
+        minor: MINOR_EMOJIS,
+        patch: patchEmojis,
       },
     }],
     ['@semantic-release/changelog', { changelogFile: 'CHANGELOG.md' }],
