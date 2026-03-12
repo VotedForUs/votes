@@ -5,14 +5,16 @@ import { XmlDownloadConfig, XmlDownloadResult } from "../xml-utils.js";
  */
 export class MockXmlUtils {
   private static mockData: Map<string, any> = new Map();
+  private static fromCacheData: Map<string, any> = new Map();
   private static shouldThrowError = false;
   private static errorMessage = "Mock error";
 
-  /**
-   * Set up mock data for a specific URL
-   */
   static setMockData(url: string, data: any): void {
     this.mockData.set(url, data);
+  }
+
+  static setMockDataFromCache(url: string, data: any): void {
+    this.fromCacheData.set(url, data);
   }
 
   /**
@@ -31,6 +33,7 @@ export class MockXmlUtils {
    */
   static reset(): void {
     this.mockData.clear();
+    this.fromCacheData.clear();
     this.shouldThrowError = false;
     this.errorMessage = "Mock error";
   }
@@ -47,7 +50,14 @@ export class MockXmlUtils {
 
     const { url } = config;
 
-    // Check if we have mock data for this URL
+    if (this.fromCacheData.has(url)) {
+      return {
+        data: this.fromCacheData.get(url),
+        fromCache: true,
+        url,
+      };
+    }
+
     if (this.mockData.has(url)) {
       return {
         data: this.mockData.get(url),

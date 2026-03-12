@@ -409,63 +409,61 @@ export class Legislators extends AbstractCongressApi {
   /**
    * Get a legislator by bioguide ID with all merged data
    * Fetches from Congress.gov API first, then merges with local YAML/XML data
-   * @param bioguideId - The member's bioguide ID  
-   * @param updateDate - Optional updateDate from member list to optimize caching
+   * @param bioguideId - The member's bioguide ID
+   * @param updateDate - Optional updateDate from member list to optimize caching.
+   *   Pass `null` to explicitly skip all API calls (member is known to not be in the API).
+   *   Pass `undefined` to use default cache logic (fetch if no cache exists).
    */
-  async getLegislator(bioguideId: string, updateDate?: string): Promise<Legislator | undefined> {
+  async getLegislator(bioguideId: string, updateDate?: string | null): Promise<Legislator | undefined> {
     await this.ensureInitialized();
 
-    // Fetch data from all sources
     const rawLegislator = this.legislatorsMap.get(bioguideId);
     const socialMediaData = this.socialMediaMap.get(bioguideId);
     const senateMember = this.senateMembersMap.get(bioguideId);
-
-    // Extract social media properties and id fallbacks
     const social = socialMediaData?.social;
     const socialMediaIds = socialMediaData?.id;
 
-    // Try to fetch from Congress.gov API only if needed
     let memberInfo: MemberInfo | undefined;
-    
-    // Check if we should fetch fresh data
-    if (this.shouldRefreshMemberCache(bioguideId, updateDate)) {
-      try {
-        const response = await this.fetchMemberInfo(bioguideId);
-        memberInfo = response.member;
-      } catch (error) {
-        // 404 is expected for former/historical members; only warn for other failures
-        const status = (error as { status?: number })?.status;
-        if (status !== 404) {
-          console.warn(`Failed to fetch member info from API for ${bioguideId}, using cached data only`);
-        }
-      }
-    } else {
-      // Use cached data - try to read from cache
-      try {
-        const cacheFilePath = path.join(this.getCacheDir(), 'member', `${bioguideId}.json`);
-        const cachedData = fs.readFileSync(cacheFilePath, 'utf8');
-        const parsed = JSON.parse(cachedData) as MemberResponse;
-        memberInfo = parsed.member;
-      } catch (error) {
-        // Cache read failed, fetch from API
+
+    // null = member is definitively not in the Congress.gov API (historical YAML-only member)
+    if (updateDate !== null) {
+      if (this.shouldRefreshMemberCache(bioguideId, updateDate)) {
         try {
           const response = await this.fetchMemberInfo(bioguideId);
           memberInfo = response.member;
-        } catch (apiError) {
-          const status = (apiError as { status?: number })?.status;
+        } catch (error) {
+          // 404 is expected for former/historical members; only warn for other failures
+          const status = (error as { status?: number })?.status;
           if (status !== 404) {
             console.warn(`Failed to fetch member info from API for ${bioguideId}, using cached data only`);
+          }
+        }
+      } else {
+        // Use cached data - try to read from cache
+        try {
+          const cacheFilePath = path.join(this.getCacheDir(), 'member', `${bioguideId}.json`);
+          const cachedData = fs.readFileSync(cacheFilePath, 'utf8');
+          const parsed = JSON.parse(cachedData) as MemberResponse;
+          memberInfo = parsed.member;
+        } catch (error) {
+          // Cache read failed, fetch from API
+          try {
+            const response = await this.fetchMemberInfo(bioguideId);
+            memberInfo = response.member;
+          } catch (apiError) {
+            const status = (apiError as { status?: number })?.status;
+            if (status !== 404) {
+              console.warn(`Failed to fetch member info from API for ${bioguideId}, using cached data only`);
+            }
           }
         }
       }
     }
 
-    // If we have no data from any source, return undefined
     if (!rawLegislator && !memberInfo) {
       return undefined;
     }
 
-    // Merge all data sources
     return this.mergeLegislatorData(memberInfo, rawLegislator, social, senateMember, socialMediaIds);
   }
 
@@ -676,13 +674,20 @@ export class Legislators extends AbstractCongressApi {
     let processed = 0;
 
     for (const bioguideId of bioguideIdsToProcess) {
-      const updateDate = memberUpdateDates.get(bioguideId);
-      const needsRefresh = this.shouldRefreshMemberCache(bioguideId, updateDate);
+      // When the member list was successfully fetched, members absent from it are
+      // historical YAML-only members that will 404 on the API — pass null to skip
+      // the API call entirely. When the list fetch failed (size === 0), fall back
+      // to undefined so the existing "fetch to be safe" logic applies.
+      const updateDate: string | null | undefined = memberUpdateDates.size > 0
+        ? (memberUpdateDates.has(bioguideId) ? memberUpdateDates.get(bioguideId) : null)
+        : memberUpdateDates.get(bioguideId);
 
-      if (needsRefresh) {
-        fetchedCount++;
-      } else {
-        cachedCount++;
+      if (updateDate !== null) {
+        if (this.shouldRefreshMemberCache(bioguideId, updateDate)) {
+          fetchedCount++;
+        } else {
+          cachedCount++;
+        }
       }
 
       const legislator = await this.getLegislator(bioguideId, updateDate);

@@ -2,7 +2,7 @@ import { test, describe, beforeEach, afterEach } from "node:test";
 import assert from "node:assert";
 import mock from "mock-fs";
 import fs from "node:fs";
-import { getLegislators, reduceLegislator } from "./legislators.js";
+import { getLegislators, reduceLegislator, buildLegislatorsFromCache } from "./legislators.js";
 import { wrapFsWithThrow } from "../utils/mocks/wrap-fs-with-throw.js";
 import { MockLegislators, mockLegislatorsOutput } from "../legislators/mocks/mock-legislators.js";
 import type { Legislator } from "../legislators/legislators.types.js";
@@ -202,6 +202,116 @@ describe("CLI Legislators Module", () => {
         { message: /Failed to fetch legislators/ },
         "Should throw error when getAllLegislators fails"
       );
+    });
+
+    test("should pass lastNCongresses option and log it", async () => {
+      const outputDir = "/test";
+      await getLegislators(
+        outputDir,
+        false,
+        false,
+        { lastNCongresses: 3 },
+        fs,
+        MockLegislators as any,
+      );
+      assert.ok(fs.existsSync(`${outputDir}/A000001.json`), "File should be written");
+    });
+
+    test("should write current members when currentMember is true", async () => {
+      const outputDir = "/test";
+      await callGetLegislators(outputDir, true);
+      assert.ok(fs.existsSync(`${outputDir}/A000001.json`));
+    });
+  });
+
+  describe("buildLegislatorsFromCache", () => {
+    test("should return 0 when cache file does not exist", () => {
+      const count = buildLegislatorsFromCache({
+        cachePath: "/nonexistent/all-legislators.json",
+        outputDir: "/test",
+        fsModule: fs,
+      });
+      assert.strictEqual(count, 0);
+    });
+
+    test("should return 0 for invalid JSON in cache file", () => {
+      mock({ "/cache/all-legislators.json": "not valid json{{{" });
+      const count = buildLegislatorsFromCache({
+        cachePath: "/cache/all-legislators.json",
+        outputDir: "/test",
+        fsModule: fs,
+      });
+      assert.strictEqual(count, 0);
+    });
+
+    test("should return 0 when cache file is not an array", () => {
+      mock({ "/cache/all-legislators.json": JSON.stringify({ notAnArray: true }) });
+      const count = buildLegislatorsFromCache({
+        cachePath: "/cache/all-legislators.json",
+        outputDir: "/test",
+        fsModule: fs,
+      });
+      assert.strictEqual(count, 0);
+    });
+
+    test("should write full legislator files from cache", () => {
+      const data: Legislator[] = mockLegislatorsOutput;
+      mock({ "/cache/all-legislators.json": JSON.stringify(data) });
+
+      const count = buildLegislatorsFromCache({
+        cachePath: "/cache/all-legislators.json",
+        outputDir: "/output",
+        fsModule: fs,
+      });
+
+      assert.strictEqual(count, 1);
+      assert.ok(fs.existsSync("/output/A000001.json"));
+      const written = JSON.parse(fs.readFileSync("/output/A000001.json", "utf-8"));
+      assert.strictEqual(written.bioguideId, "A000001");
+    });
+
+    test("should write reduced (small) legislator files from cache", () => {
+      const data: Legislator[] = mockLegislatorsOutput;
+      mock({ "/cache/all-legislators.json": JSON.stringify(data) });
+
+      const count = buildLegislatorsFromCache({
+        cachePath: "/cache/all-legislators.json",
+        outputDir: "/output",
+        small: true,
+        fsModule: fs,
+      });
+
+      assert.strictEqual(count, 1);
+      const written = JSON.parse(fs.readFileSync("/output/A000001.json", "utf-8"));
+      assert.strictEqual(written.id, "A000001");
+      assert.strictEqual(written.bioguide, "A000001");
+      assert.strictEqual(written.terms, undefined);
+    });
+
+    test("should create output directory if it does not exist", () => {
+      const data: Legislator[] = mockLegislatorsOutput;
+      mock({ "/cache/all-legislators.json": JSON.stringify(data) });
+
+      buildLegislatorsFromCache({
+        cachePath: "/cache/all-legislators.json",
+        outputDir: "/deep/nested/output",
+        fsModule: fs,
+      });
+
+      assert.ok(fs.existsSync("/deep/nested/output"));
+    });
+
+    test("should skip entries without a bioguide ID", () => {
+      const data = [{ bioguideId: undefined, name: { official_full: "No ID" } }];
+      mock({ "/cache/all-legislators.json": JSON.stringify(data) });
+
+      const count = buildLegislatorsFromCache({
+        cachePath: "/cache/all-legislators.json",
+        outputDir: "/output",
+        fsModule: fs,
+      });
+
+      assert.strictEqual(count, 0);
     });
   });
 });

@@ -4,6 +4,7 @@ import { setupTestEnvironment, cleanupTestEnvironment } from "../test-setup.js";
 import {
   Legislators,
   LEGISLATORS_CURRENT_URL,
+  LEGISLATORS_HISTORICAL_URL,
   LEGISLATORS_SOCIAL_URL,
   SENATE_MEMBERS_URL,
 } from "./legislators.js";
@@ -475,6 +476,269 @@ describe("Legislators", () => {
       assert.ok(Array.isArray(result));
       // Mock data has terms in 2021-2027 range (117th–119th); all should be included
       assert.ok(result.length >= 1);
+    });
+  });
+
+  describe("initialize fromCache logging", () => {
+    test("should log fromCache messages when data is loaded from cache", async () => {
+      MockYamlUtils.setMockDataFromCache(LEGISLATORS_CURRENT_URL, mockLegislatorsData);
+      MockYamlUtils.setMockDataFromCache(LEGISLATORS_SOCIAL_URL, mockSocialMediaData);
+      MockYamlUtils.setMockDataFromCache(LEGISLATORS_HISTORICAL_URL, []);
+      MockXmlUtils.setMockDataFromCache(SENATE_MEMBERS_URL, mockSenateMembersData);
+
+      await legislators.initialize();
+
+      const leg = await legislators.getLegislator("A000001");
+      assert.ok(leg);
+      assert.strictEqual(leg.id?.bioguide, "A000001");
+    });
+  });
+
+  describe("normalizeTermDate edge cases", () => {
+    test("should handle year-only start and end dates in term filtering", async () => {
+      const yearOnlyData = [
+        {
+          id: { bioguide: "Y000001" },
+          name: { first: "Year", last: "Only" },
+          bio: {},
+          terms: [
+            {
+              type: "sen",
+              start: "2021",
+              end: "2027",
+              state: "TX",
+              party: "Republican",
+            },
+          ],
+        },
+      ];
+
+      MockYamlUtils.setMockData(LEGISLATORS_CURRENT_URL, yearOnlyData);
+      MockYamlUtils.setMockData(LEGISLATORS_SOCIAL_URL, []);
+      MockXmlUtils.setMockData(SENATE_MEMBERS_URL, { senators: { senator: [] } });
+      await legislators.initialize();
+
+      const result = legislators.getSenateBioguideIdsWithParty("2024-01-01");
+      const found = result.find((r) => r.bioguideId === "Y000001");
+      assert.ok(found, "should find senator with year-only dates");
+      assert.strictEqual(found!.party, "Republican");
+    });
+
+    test("should handle empty end date as open-ended term", async () => {
+      const openEndedData = [
+        {
+          id: { bioguide: "O000001" },
+          name: { first: "Open", last: "Ended" },
+          bio: {},
+          terms: [
+            {
+              type: "sen",
+              start: "2021-01-03",
+              end: "",
+              state: "WA",
+              party: "Democrat",
+            },
+          ],
+        },
+      ];
+
+      MockYamlUtils.setMockData(LEGISLATORS_CURRENT_URL, openEndedData);
+      MockYamlUtils.setMockData(LEGISLATORS_SOCIAL_URL, []);
+      MockXmlUtils.setMockData(SENATE_MEMBERS_URL, { senators: { senator: [] } });
+      await legislators.initialize();
+
+      // An empty end date should be treated as far-future, covering any date
+      const result = legislators.getSenateBioguideIdsWithParty("2030-01-01");
+      const found = result.find((r) => r.bioguideId === "O000001");
+      assert.ok(found, "open-ended senator should serve on 2030-01-01");
+    });
+  });
+
+  describe("getLegislator with null updateDate", () => {
+    test("should skip API call and use YAML data when updateDate is null", async () => {
+      MockYamlUtils.setMockData(LEGISLATORS_CURRENT_URL, mockLegislatorsData);
+      MockYamlUtils.setMockData(LEGISLATORS_SOCIAL_URL, mockSocialMediaData);
+      MockXmlUtils.setMockData(SENATE_MEMBERS_URL, mockSenateMembersData);
+      await legislators.initialize();
+
+      // fetchMock will throw if any API call is made — setting no routes proves no call happens
+      fetchMock.hardReset();
+
+      const leg = await legislators.getLegislator("A000001", null);
+      assert.ok(leg, "should return legislator from YAML data");
+      assert.strictEqual(leg!.id?.bioguide, "A000001");
+      assert.strictEqual(leg!.name?.first, "Alex");
+    });
+
+    test("should return undefined for unknown bioguide with null updateDate", async () => {
+      MockYamlUtils.setMockData(LEGISLATORS_CURRENT_URL, mockLegislatorsData);
+      MockYamlUtils.setMockData(LEGISLATORS_SOCIAL_URL, mockSocialMediaData);
+      MockXmlUtils.setMockData(SENATE_MEMBERS_URL, mockSenateMembersData);
+      await legislators.initialize();
+
+      fetchMock.hardReset();
+
+      const leg = await legislators.getLegislator("UNKNOWN999", null);
+      assert.strictEqual(leg, undefined);
+    });
+  });
+
+  describe("mergeLegislatorData: social media id fallbacks", () => {
+    test("should apply thomas/govtrack fallbacks when missing from raw legislator", async () => {
+      const rawWithoutIds = [
+        {
+          id: { bioguide: "G000007" },
+          name: { first: "Grace", last: "Green" },
+          bio: {},
+          terms: [{ type: "rep", start: "2023-01-03", end: "2025-01-03", state: "GA", district: 4, party: "Democrat" }],
+        },
+      ];
+      const socialWithIds = [
+        {
+          id: { bioguide: "G000007", thomas: "00789", govtrack: 400007 },
+          social: { twitter: "gracegreen" },
+        },
+      ];
+
+      MockYamlUtils.setMockData(LEGISLATORS_CURRENT_URL, rawWithoutIds);
+      MockYamlUtils.setMockData(LEGISLATORS_SOCIAL_URL, socialWithIds);
+      MockXmlUtils.setMockData(SENATE_MEMBERS_URL, { senators: { senator: [] } });
+      await legislators.initialize();
+
+      const leg = await legislators.getLegislator("G000007");
+      assert.ok(leg);
+      assert.strictEqual(leg!.id?.thomas, "00789", "thomas should be set from social media fallback");
+      assert.strictEqual(leg!.id?.govtrack, 400007, "govtrack should be set from social media fallback");
+      assert.strictEqual(leg!.id?.twitter, "gracegreen");
+    });
+
+    test("should not overwrite thomas/govtrack when already in raw legislator", async () => {
+      MockYamlUtils.setMockData(LEGISLATORS_CURRENT_URL, mockLegislatorsData);
+      MockYamlUtils.setMockData(LEGISLATORS_SOCIAL_URL, mockSocialMediaData);
+      MockXmlUtils.setMockData(SENATE_MEMBERS_URL, mockSenateMembersData);
+      await legislators.initialize();
+
+      const leg = await legislators.getLegislator("A000001");
+      assert.ok(leg);
+      // Raw data has thomas "00123"; social media id also has "00123" — should keep raw value
+      assert.strictEqual(leg!.id?.thomas, "00123");
+      assert.strictEqual(leg!.id?.govtrack, 400001);
+    });
+  });
+
+  describe("mergeLegislatorData: addressInformation merge", () => {
+    test("should fill missing office/phone from senate XML when addressInformation exists but is incomplete", async () => {
+      const memberInfoWithAddress = {
+        bioguideId: "B000002",
+        currentMember: true,
+        directOrderName: "Blake Brown",
+        firstName: "Blake",
+        honorificName: "Sen.",
+        invertedOrderName: "Brown, Blake",
+        lastName: "Brown",
+        party: "Democrat",
+        partyHistory: [],
+        state: "CA",
+        terms: [],
+        updateDate: "2024-01-01",
+        url: "https://api.congress.gov/v3/member/B000002",
+        addressInformation: {
+          city: "Washington",
+          district: "DC",
+          officeAddress: "",
+          phoneNumber: "",
+          zipCode: 20510,
+        },
+      };
+
+      fetchMock.get(
+        "begin:https://api.congress.gov/v3/member/B000002",
+        { member: memberInfoWithAddress },
+      );
+
+      MockYamlUtils.setMockData(LEGISLATORS_CURRENT_URL, mockLegislatorsData);
+      MockYamlUtils.setMockData(LEGISLATORS_SOCIAL_URL, mockSocialMediaData);
+      MockXmlUtils.setMockData(SENATE_MEMBERS_URL, mockSenateMembersData);
+      await legislators.initialize();
+
+      const leg = await legislators.getLegislator("B000002");
+      assert.ok(leg);
+      assert.ok(leg!.addressInformation);
+      // officeAddress and phoneNumber were empty — should be filled from senate XML
+      assert.strictEqual(leg!.addressInformation!.officeAddress, "456 Russell");
+      assert.strictEqual(leg!.addressInformation!.phoneNumber, "202-555-0003");
+      // city/district/zipCode came from the API MemberInfo
+      assert.strictEqual(leg!.addressInformation!.city, "Washington");
+      assert.strictEqual(leg!.addressInformation!.zipCode, 20510);
+    });
+  });
+
+  describe("getAllLegislators with member list", () => {
+    test("should use null updateDate for members absent from member list API", async () => {
+      MockYamlUtils.setMockData(LEGISLATORS_CURRENT_URL, mockLegislatorsData);
+      MockYamlUtils.setMockData(LEGISLATORS_SOCIAL_URL, mockSocialMediaData);
+      MockXmlUtils.setMockData(SENATE_MEMBERS_URL, mockSenateMembersData);
+      await legislators.initialize();
+
+      // Member list returns only A000001 — B000002, C000003, F000006 are "historical"
+      const memberListResponse = {
+        members: [
+          { bioguideId: "A000001", updateDate: "2024-01-01", name: "Alex Anderson", partyName: "Republican", state: "CA", terms: [], url: "" },
+        ],
+        pagination: { count: 1 },
+        request: { contentType: "application/json", format: "json" },
+      };
+
+      fetchMock.get("begin:https://api.congress.gov/v3/member", memberListResponse);
+
+      const result = await legislators.getAllLegislators(false);
+      assert.ok(Array.isArray(result));
+      // All 4 YAML members should still be in the output (historical ones from YAML only)
+      assert.strictEqual(result.length, 4);
+      // A000001 was in member list, others were historical (null updateDate, YAML only)
+      const a = result.find((r) => r.bioguideId === "A000001");
+      assert.ok(a);
+    });
+
+    test("should handle paginated member list", async () => {
+      MockYamlUtils.setMockData(LEGISLATORS_CURRENT_URL, mockLegislatorsData);
+      MockYamlUtils.setMockData(LEGISLATORS_SOCIAL_URL, mockSocialMediaData);
+      MockXmlUtils.setMockData(SENATE_MEMBERS_URL, mockSenateMembersData);
+      await legislators.initialize();
+
+      const page1 = {
+        members: [
+          { bioguideId: "A000001", updateDate: "2024-01-01", name: "Alex Anderson", partyName: "Republican", state: "CA", terms: [], url: "" },
+        ],
+        pagination: { count: 2, next: "https://api.congress.gov/v3/member?offset=250" },
+        request: { contentType: "application/json", format: "json" },
+      };
+      const page2 = {
+        members: [
+          { bioguideId: "B000002", updateDate: "2024-01-01", name: "Blake Brown", partyName: "Democrat", state: "CA", terms: [], url: "" },
+        ],
+        pagination: { count: 2 },
+        request: { contentType: "application/json", format: "json" },
+      };
+
+      fetchMock
+        .get("begin:https://api.congress.gov/v3/member?api_key=test-api-key-for-testing-only&format=json&currentMember=false&offset=0", page1)
+        .get("begin:https://api.congress.gov/v3/member?api_key=test-api-key-for-testing-only&format=json&currentMember=false&offset=250", page2);
+
+      const result = await legislators.getAllLegislators(false);
+      assert.ok(Array.isArray(result));
+      assert.strictEqual(result.length, 4);
+    });
+  });
+
+  describe("clearLegislatorsCache", () => {
+    test("should call clearCache without throwing", async () => {
+      MockYamlUtils.setMockData(LEGISLATORS_CURRENT_URL, mockLegislatorsData);
+      MockYamlUtils.setMockData(LEGISLATORS_SOCIAL_URL, mockSocialMediaData);
+      MockXmlUtils.setMockData(SENATE_MEMBERS_URL, mockSenateMembersData);
+      await legislators.initialize();
+
+      assert.doesNotThrow(() => legislators.clearLegislatorsCache());
     });
   });
 });
