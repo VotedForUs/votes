@@ -12,7 +12,7 @@ import { execSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-const CONTENT_DIR = path.join(process.cwd(), 'content');
+const CONTENT_DIR = path.join(process.cwd(), 'data');
 const PR_BODY_PATH = path.join(process.cwd(), '.github', 'pr-body.md');
 
 interface BillSummaryItem {
@@ -60,9 +60,9 @@ function getBillTitle(filePath: string): string {
 }
 
 function parseBillPath(relativePath: string): { congress: number; billType: string; number: string } | null {
-  // content/bills/{congress}/{billType}/{number}.json
+  // data/bills/{congress}/{billType}/{number}.json
   const parts = relativePath.replace(/\\/g, '/').split('/');
-  if (parts.length < 5 || parts[0] !== 'content' || parts[1] !== 'bills') return null;
+  if (parts.length < 5 || parts[0] !== 'data' || parts[1] !== 'bills') return null;
   const congress = parseInt(parts[2]);
   const billType = parts[3];
   const number = path.basename(parts[4], '.json');
@@ -71,21 +71,21 @@ function parseBillPath(relativePath: string): { congress: number; billType: stri
 }
 
 function parseLegislatorPath(relativePath: string): string | null {
-  // content/legislators/{bioguideId}.json
+  // data/legislators/{bioguideId}.json
   const parts = relativePath.replace(/\\/g, '/').split('/');
-  if (parts.length < 3 || parts[0] !== 'content' || parts[1] !== 'legislators') return null;
+  if (parts.length < 3 || parts[0] !== 'data' || parts[1] !== 'legislators') return null;
   return path.basename(parts[2], '.json');
 }
 
 function collectChanges(): ChangeSummary {
   // Get diff between HEAD~1 and HEAD (for committed changes) or against index (for uncommitted)
-  let diffOutput = runGit('git diff HEAD~1 HEAD --name-status -- content/');
+  let diffOutput = runGit('git diff HEAD~1 HEAD --name-status -- data/');
   if (!diffOutput) {
     // Fallback: diff against index (first commit or no prior commit)
-    diffOutput = runGit('git diff --cached --name-status -- content/');
+    diffOutput = runGit('git diff --cached --name-status -- data/');
   }
   if (!diffOutput) {
-    diffOutput = runGit('git status --porcelain -- content/');
+    diffOutput = runGit('git status --porcelain -- data/');
   }
 
   const newBills: BillSummaryItem[] = [];
@@ -131,7 +131,7 @@ function collectChanges(): ChangeSummary {
     }
   }
 
-  const ALL_BILL_TYPES = ['hr', 's', 'hjres', 'sjres', 'hconres', 'sconres', 'hres', 'sres'];
+  const ALL_BILL_TYPES = ['hr', 's', 'hjres', 'sjres', 'hconres', 'sconres', 'hres', 'sres'] as const;
   const noChangeBillTypes = ALL_BILL_TYPES.filter(t => !changedBillTypes.has(t));
 
   return { newBills, updatedBills, deletedBills, updatedLegislators, noChangeBillTypes };

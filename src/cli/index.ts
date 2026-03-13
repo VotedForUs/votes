@@ -12,6 +12,7 @@ import * as path from 'path';
 import { getLegislators, buildLegislatorsFromCache } from './legislators.js';
 import { getBills, writeVotedBills, buildFromCache, fetchOneBill } from './bills.js';
 import { processTypes } from './types.js';
+import { generateChangeSummary } from './changelog.js';
 import { BILL_TYPES } from '../api-congress-gov/abstract-api.types.js';
 
 // Load environment variables from .env file
@@ -316,7 +317,6 @@ program
   .option('-t, --term <number>', 'Congressional term', '119')
   .option('-s, --small', 'Output reduced bill data', true)
   .option('--no-small', 'Output full bill data')
-  .option('-e, --editorial <path>', 'Generate editorial files in this directory')
   .action(async (options) => {
     try {
       const term = parseInt(options.term, 10);
@@ -336,12 +336,38 @@ program
         outputDir: options.output,
         cacheDir: options.cache,
         small: options.small,
-        editorialDir: options.editorial,
       });
       
       process.exit(result.success ? 0 : 1);
     } catch (error) {
       console.error('Error building from cache:', error);
+      process.exit(1);
+    }
+  });
+
+// Generate change summary command
+program
+  .command('generate-change-summary')
+  .description('Generate a structured changelog entry and PR body markdown from data/ git changes')
+  .option('--data-dir <path>', 'Path to the data/ directory (default: {cwd}/data)')
+  .option('--changelog-dir <path>', 'Path to the changelog directory (default: {dataDir}/changelog)')
+  .option('--accumulated-path <path>', 'Path to the accumulated changelog.json (default: {dataDir}/changelog.json)')
+  .option('--pr-body <path>', 'Path to write the PR body markdown (default: {cwd}/.github/pr-body.md)')
+  .option('--run-id <string>', 'Run ID string (default: GITHUB_RUN_ID env var or timestamp)')
+  .option('--site-base-url <url>', 'Base URL for building links (default: https://votedfor.us)')
+  .action((options) => {
+    try {
+      generateChangeSummary({
+        dataDir: options.dataDir,
+        changelogDir: options.changelogDir,
+        accumulatedPath: options.accumulatedPath,
+        prBodyPath: options.prBody,
+        runId: options.runId,
+        siteBaseUrl: options.siteBaseUrl,
+      });
+      process.exit(0);
+    } catch (error) {
+      console.error('Error generating change summary:', error);
       process.exit(1);
     }
   });

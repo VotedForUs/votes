@@ -8,8 +8,6 @@ import { CongressApi, computeBillDateFields, shouldKeepAction } from "../congres
 import type { BillWithActions, BillActionWithVotes } from "../congress/congress-api.types.js";
 import type { BillSmall, WriteVotedBillsResult, WriteVotedBillsOptions, BuildFromCacheOptions, BuildFromCacheResult, FetchOneBillOptions, FetchOneBillResult } from "./bills.types.js";
 import { BILL_TYPES, type BillType } from "../api-congress-gov/abstract-api.types.js";
-import { generateEditorial } from "./editorial.js";
-
 /**
  * Reduce a bill to a smaller subset of properties
  * @param bill - Full bill with actions
@@ -380,7 +378,6 @@ async function buildBillTypeFromCache(
  * Build bill data from cached API responses without making new API calls
  * Writes each bill to an individual file in the output directory
  * Populates vote details from cached XML data
- * Optionally generates editorial files after building
  * 
  * @param options - Configuration options
  * @returns Result object with success status, count of bills written, and any error
@@ -395,7 +392,6 @@ export async function buildFromCache(
     cacheDir = path.join(process.cwd(), '.cache', 'congress'),
     small,
     CongressApiClass = CongressApi,
-    editorialDir,
   } = options;
 
   console.log(`Building bills from cache...`);
@@ -403,9 +399,6 @@ export async function buildFromCache(
   console.log(`Cache directory: ${cacheDir}`);
   console.log(`Output directory: ${outputDir}`);
   console.log(`Small: ${small}`);
-  if (editorialDir) {
-    console.log(`Editorial directory: ${editorialDir}`);
-  }
 
   try {
     // Initialize CongressApi to populate vote details from cached XML
@@ -474,16 +467,6 @@ export async function buildFromCache(
       console.log(`${result.type.toUpperCase()}: ${result.count} bills`);
     }
     console.log(`Total: ${totalCount} bills`);
-    
-    // Generate editorial files if editorialDir is provided
-    if (editorialDir) {
-      await generateEditorial({
-        term,
-        billType,
-        sourceDir: outputDir,
-        outputDir: editorialDir,
-      });
-    }
     
     return { success: true, count: totalCount, billTypes: results };
   } catch (error) {

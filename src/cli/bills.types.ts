@@ -69,8 +69,6 @@ export interface BuildFromCacheOptions {
   cacheDir?: string;  // Defaults to .cache/congress
   small: boolean;
   CongressApiClass?: typeof CongressApi;
-  /** Directory for editorial files (if provided, generates editorial after build) */
-  editorialDir?: string;
 }
 
 /**
