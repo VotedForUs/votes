@@ -54,4 +54,12 @@ export type {
   ChamberVote,
   BillChamberVotes,
 } from './src/congress/congress-api.types.js';
-// Runtime exports only - types are handled by TypeScript declaration files
+// Changelog utilities
+export { generateChangeSummary } from './src/cli/changelog.js';
+export type {
+  ChangelogEntry,
+  BillChangeItem,
+  LegislatorChangeItem,
+  RawChange,
+  GenerateChangeSummaryOptions,
+} from './src/cli/changelog.types.js';
