@@ -1,11 +1,40 @@
 import { test, describe, beforeEach, afterEach } from "node:test";
 import assert from "node:assert";
+import { EventEmitter } from "node:events";
 import mock from "mock-fs";
 import fs from "node:fs";
-import { getLegislators, reduceLegislator, buildLegislatorsFromCache } from "./legislators.js";
+import { getLegislators, reduceLegislator, buildLegislatorsFromCache, downloadLegislatorImage } from "./legislators.js";
 import { wrapFsWithThrow } from "../utils/mocks/wrap-fs-with-throw.js";
 import { MockLegislators, mockLegislatorsOutput } from "../legislators/mocks/mock-legislators.js";
 import type { Legislator } from "../legislators/legislators.types.js";
+
+/**
+ * Creates a mock HTTP get function for testing downloadLegislatorImage.
+ * The returned mock supports: success, HTTP error, redirect, and network error.
+ */
+function createMockHttpGet(behavior: {
+  statusCode?: number;
+  redirectTo?: string;
+  networkError?: string;
+} = {}) {
+  return (_url: string, callback: (res: any) => void) => {
+    const req = new EventEmitter();
+    process.nextTick(() => {
+      if (behavior.networkError) {
+        req.emit('error', new Error(behavior.networkError));
+        return;
+      }
+      const res = new EventEmitter() as any;
+      res.statusCode = behavior.statusCode ?? 200;
+      res.headers = behavior.redirectTo ? { location: behavior.redirectTo } : {};
+      res.pipe = (fileStream: any) => {
+        process.nextTick(() => fileStream.end());
+      };
+      callback(res);
+    });
+    return req;
+  };
+}
 
 describe("CLI Legislators Module", () => {
   let originalCwd: string;
@@ -25,13 +54,11 @@ describe("CLI Legislators Module", () => {
   // Helper function to call getLegislators with default mock dependencies
   const callGetLegislators = async (
     outputDir?: string,
-    currentMember: boolean = false,
     small: boolean = false,
     fsModule: typeof fs = fs,
   ) => {
     return getLegislators(
       outputDir,
-      currentMember,
       small,
       undefined,
       fsModule,
@@ -177,7 +204,7 @@ describe("CLI Legislators Module", () => {
 
     test("should reduce legislators when small flag is true", async () => {
       const outputDir = "/test";
-      await callGetLegislators(outputDir, false, true);
+      await callGetLegislators(outputDir, true);
       const leg = getWrittenContent(outputDir);
       assert.strictEqual(leg.id, "A000001");
       assert.strictEqual(leg.bioguide, "A000001");
@@ -189,7 +216,7 @@ describe("CLI Legislators Module", () => {
       const wrappedFs = wrapFsWithThrow(fs);
       wrappedFs.setShouldThrowError(true, "Permission denied");
       await assert.rejects(
-        () => callGetLegislators("/readonly", false, false, wrappedFs),
+        () => callGetLegislators("/readonly", false, wrappedFs),
         { message: /Permission denied/ },
         "Should throw error when file write fails"
       );
@@ -204,23 +231,66 @@ describe("CLI Legislators Module", () => {
       );
     });
 
-    test("should pass lastNCongresses option and log it", async () => {
+    test("should pass congress option", async () => {
       const outputDir = "/test";
       await getLegislators(
         outputDir,
         false,
-        false,
-        { lastNCongresses: 3 },
+        { congress: 118 },
         fs,
         MockLegislators as any,
       );
       assert.ok(fs.existsSync(`${outputDir}/A000001.json`), "File should be written");
     });
 
-    test("should write current members when currentMember is true", async () => {
+    test("should skip image download when legislator has no imageUrl", async () => {
       const outputDir = "/test";
-      await callGetLegislators(outputDir, true);
+      const imagesDir = "/images";
+      MockLegislators.setMockLegislators([
+        { ...mockLegislatorsOutput[0], depiction: undefined },
+      ] as any);
+      const mockGet = createMockHttpGet({ statusCode: 200 });
+      await getLegislators(outputDir, false, { imagesDir }, fs, MockLegislators as any, mockGet, mockGet);
       assert.ok(fs.existsSync(`${outputDir}/A000001.json`));
+      assert.ok(!fs.existsSync(`${imagesDir}/A000001.jpg`), "No image should be downloaded");
+    });
+
+    test("should create imagesDir if it does not exist", async () => {
+      const outputDir = "/test";
+      const imagesDir = "/images/legislators";
+      const mockGet = createMockHttpGet({ statusCode: 200 });
+      MockLegislators.setMockLegislators([
+        { ...mockLegislatorsOutput[0], depiction: { imageUrl: "https://example.com/A000001.jpg" } },
+      ] as any);
+      await getLegislators(outputDir, false, { imagesDir }, fs, MockLegislators as any, mockGet, mockGet);
+      assert.ok(fs.existsSync(imagesDir), "imagesDir should be created");
+    });
+
+    test("should update imageUrl to local path when image file is already cached on disk", async () => {
+      const outputDir = "/test";
+      const imagesDir = "/images";
+      mock({
+        "/images/A000001.jpg": "image data",
+      });
+      const mockGet = createMockHttpGet({ statusCode: 404 });
+      MockLegislators.setMockLegislators([
+        { ...mockLegislatorsOutput[0], depiction: { imageUrl: "https://example.com/A000001.jpg" } },
+      ] as any);
+      await getLegislators(outputDir, false, { imagesDir }, fs, MockLegislators as any, mockGet, mockGet);
+      const written = JSON.parse(fs.readFileSync(`${outputDir}/A000001.json`, "utf-8"));
+      assert.strictEqual(written.depiction.imageUrl, "/images/legislators/A000001.jpg", "imageUrl should point to local path when file already exists");
+    });
+
+    test("should update imageUrl to local path after download", async () => {
+      const outputDir = "/test";
+      const imagesDir = "/images";
+      const mockGet = createMockHttpGet({ statusCode: 200 });
+      MockLegislators.setMockLegislators([
+        { ...mockLegislatorsOutput[0], depiction: { imageUrl: "https://example.com/A000001.jpg" } },
+      ] as any);
+      await getLegislators(outputDir, false, { imagesDir }, fs, MockLegislators as any, mockGet, mockGet);
+      const written = JSON.parse(fs.readFileSync(`${outputDir}/A000001.json`, "utf-8"));
+      assert.strictEqual(written.depiction.imageUrl, "/images/legislators/A000001.jpg");
     });
   });
 
@@ -313,6 +383,164 @@ describe("CLI Legislators Module", () => {
 
       assert.strictEqual(count, 0);
     });
+  });
+});
+
+describe("downloadLegislatorImage", () => {
+  afterEach(() => {
+    mock.restore();
+    MockLegislators.reset();
+  });
+
+  test("returns local path when file already exists", async () => {
+    mock({ "/images/A000001.jpg": "image data" });
+    const result = await downloadLegislatorImage(
+      "https://example.com/A000001.jpg",
+      "A000001",
+      "/images",
+      fs,
+    );
+    assert.strictEqual(result, "/images/legislators/A000001.jpg");
+  });
+
+  test("returns local path after successful HTTPS download", async () => {
+    mock({ "/images": {} });
+    const mockGet = createMockHttpGet({ statusCode: 200 });
+    const result = await downloadLegislatorImage(
+      "https://example.com/A000001.jpg",
+      "A000001",
+      "/images",
+      fs,
+      mockGet,
+    );
+    assert.strictEqual(result, "/images/legislators/A000001.jpg");
+  });
+
+  test("returns original URL on HTTP error status", async () => {
+    mock({});
+    const mockGet = createMockHttpGet({ statusCode: 404 });
+    const result = await downloadLegislatorImage(
+      "https://example.com/A000001.jpg",
+      "A000001",
+      "/images",
+      fs,
+      mockGet,
+    );
+    assert.strictEqual(result, "https://example.com/A000001.jpg");
+  });
+
+  test("returns original URL on missing status code", async () => {
+    mock({});
+    const mockGet = createMockHttpGet({ statusCode: undefined });
+    const result = await downloadLegislatorImage(
+      "https://example.com/A000001.jpg",
+      "A000001",
+      "/images",
+      fs,
+      mockGet,
+    );
+    assert.strictEqual(result, "https://example.com/A000001.jpg");
+  });
+
+  test("follows redirect with location header", async () => {
+    mock({ "/images": {} });
+    const redirectTarget = "https://example.com/redirected/A000001.jpg";
+    let callCount = 0;
+    const mockGet = (url: string, callback: (res: any) => void) => {
+      const req = new EventEmitter();
+      process.nextTick(() => {
+        const res = new EventEmitter() as any;
+        if (callCount === 0) {
+          res.statusCode = 301;
+          res.headers = { location: redirectTarget };
+          res.pipe = () => {};
+        } else {
+          res.statusCode = 200;
+          res.headers = {};
+          res.pipe = (fileStream: any) => {
+            process.nextTick(() => fileStream.end());
+          };
+        }
+        callCount++;
+        callback(res);
+      });
+      return req;
+    };
+    const result = await downloadLegislatorImage(
+      "https://example.com/A000001.jpg",
+      "A000001",
+      "/images",
+      fs,
+      mockGet as any,
+    );
+    assert.strictEqual(result, "/images/legislators/A000001.jpg");
+  });
+
+  test("returns original URL on redirect without location", async () => {
+    mock({});
+    const mockGet = createMockHttpGet({ statusCode: 301 });
+    const result = await downloadLegislatorImage(
+      "https://example.com/A000001.jpg",
+      "A000001",
+      "/images",
+      fs,
+      mockGet,
+    );
+    assert.strictEqual(result, "https://example.com/A000001.jpg");
+  });
+
+  test("returns original URL on network error", async () => {
+    mock({});
+    const mockGet = createMockHttpGet({ networkError: "ECONNREFUSED" });
+    const result = await downloadLegislatorImage(
+      "https://example.com/A000001.jpg",
+      "A000001",
+      "/images",
+      fs,
+      mockGet,
+    );
+    assert.strictEqual(result, "https://example.com/A000001.jpg");
+  });
+
+  test("uses http module for http:// URLs", async () => {
+    mock({ "/images": {} });
+    const mockHttpsGet = createMockHttpGet({ statusCode: 404 });
+    const mockHttpGet = createMockHttpGet({ statusCode: 200 });
+    const result = await downloadLegislatorImage(
+      "http://example.com/A000001.jpg",
+      "A000001",
+      "/images",
+      fs,
+      mockHttpsGet,
+      mockHttpGet,
+    );
+    assert.strictEqual(result, "/images/legislators/A000001.jpg");
+  });
+
+  test("uses image extension from URL pathname", async () => {
+    mock({ "/images": {} });
+    const mockGet = createMockHttpGet({ statusCode: 200 });
+    const result = await downloadLegislatorImage(
+      "https://example.com/photos/A000001.png",
+      "A000001",
+      "/images",
+      fs,
+      mockGet,
+    );
+    assert.strictEqual(result, "/images/legislators/A000001.png");
+  });
+
+  test("defaults to .jpg when URL has no extension", async () => {
+    mock({ "/images": {} });
+    const mockGet = createMockHttpGet({ statusCode: 200 });
+    const result = await downloadLegislatorImage(
+      "https://example.com/photos/A000001",
+      "A000001",
+      "/images",
+      fs,
+      mockGet,
+    );
+    assert.strictEqual(result, "/images/legislators/A000001.jpg");
   });
 });
 

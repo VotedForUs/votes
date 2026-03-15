@@ -381,38 +381,15 @@ export class Legislators extends AbstractCongressApi {
   }
 
   /**
-   * Checks if a member's cached data is up to date
+   * Get a legislator by bioguide ID with all merged data.
+   * Fetches from Congress.gov API when updateDate indicates the cache is stale,
+   * reads from cache when it is fresh, or skips the API entirely for YAML-only members.
+   *
    * @param bioguideId - The member's bioguide ID
-   * @param updateDate - The updateDate from the member list API
-   * @returns true if cache should be refreshed
-   */
-  private shouldRefreshMemberCache(bioguideId: string, updateDate?: string): boolean {
-    if (!updateDate) {
-      return true; // No update date, fetch to be safe
-    }
-
-    const cacheFilePath = path.join(this.getCacheDir(), 'member', `${bioguideId}.json`);
-    
-    try {
-      const stats = fs.statSync(cacheFilePath);
-      const cacheDate = stats.mtime;
-      const apiUpdateDate = new Date(updateDate);
-      
-      // Return true if API data is newer than cache
-      return apiUpdateDate > cacheDate;
-    } catch (error) {
-      // Cache file doesn't exist, needs refresh
-      return true;
-    }
-  }
-
-  /**
-   * Get a legislator by bioguide ID with all merged data
-   * Fetches from Congress.gov API first, then merges with local YAML/XML data
-   * @param bioguideId - The member's bioguide ID
-   * @param updateDate - Optional updateDate from member list to optimize caching.
-   *   Pass `null` to explicitly skip all API calls (member is known to not be in the API).
-   *   Pass `undefined` to use default cache logic (fetch if no cache exists).
+   * @param updateDate - updateDate string from the member list API.
+   *   Pass `null` to skip all API calls (member is absent from the congress list — YAML-only).
+   *   Pass `undefined` to always fetch from the API (no prior update date known).
+   *   Pass a string to compare against the cached updateDate — only fetches if changed.
    */
   async getLegislator(bioguideId: string, updateDate?: string | null): Promise<Legislator | undefined> {
     await this.ensureInitialized();
@@ -425,35 +402,33 @@ export class Legislators extends AbstractCongressApi {
 
     let memberInfo: MemberInfo | undefined;
 
-    // null = member is definitively not in the Congress.gov API (historical YAML-only member)
     if (updateDate !== null) {
-      if (this.shouldRefreshMemberCache(bioguideId, updateDate)) {
+      const cacheFilePath = path.join(this.getCacheDir(), 'member', `${bioguideId}.json`);
+      const needsFetch = this.memberNeedsFetch(cacheFilePath, updateDate);
+
+      if (needsFetch) {
         try {
           const response = await this.fetchMemberInfo(bioguideId);
           memberInfo = response.member;
         } catch (error) {
-          // 404 is expected for former/historical members; only warn for other failures
           const status = (error as { status?: number })?.status;
           if (status !== 404) {
-            console.warn(`Failed to fetch member info from API for ${bioguideId}, using cached data only`);
+            console.warn(`Failed to fetch member info for ${bioguideId}, using cached data only`);
           }
         }
       } else {
-        // Use cached data - try to read from cache
         try {
-          const cacheFilePath = path.join(this.getCacheDir(), 'member', `${bioguideId}.json`);
-          const cachedData = fs.readFileSync(cacheFilePath, 'utf8');
-          const parsed = JSON.parse(cachedData) as MemberResponse;
+          const parsed = JSON.parse(fs.readFileSync(cacheFilePath, 'utf8')) as MemberResponse;
           memberInfo = parsed.member;
-        } catch (error) {
-          // Cache read failed, fetch from API
+        } catch {
+          // Cache read failed — fall back to API
           try {
             const response = await this.fetchMemberInfo(bioguideId);
             memberInfo = response.member;
           } catch (apiError) {
             const status = (apiError as { status?: number })?.status;
             if (status !== 404) {
-              console.warn(`Failed to fetch member info from API for ${bioguideId}, using cached data only`);
+              console.warn(`Failed to fetch member info for ${bioguideId}, using cached data only`);
             }
           }
         }
@@ -465,6 +440,20 @@ export class Legislators extends AbstractCongressApi {
     }
 
     return this.mergeLegislatorData(memberInfo, rawLegislator, social, senateMember, socialMediaIds);
+  }
+
+  /**
+   * Returns true if the member detail cache is absent or its stored updateDate differs
+   * from the one returned by the member list API.
+   */
+  private memberNeedsFetch(cacheFilePath: string, updateDate: string | undefined): boolean {
+    if (!updateDate) return true;
+    try {
+      const cached = JSON.parse(fs.readFileSync(cacheFilePath, 'utf8')) as MemberResponse;
+      return cached.member?.updateDate !== updateDate;
+    } catch {
+      return true;
+    }
   }
 
   /**
@@ -536,154 +525,104 @@ export class Legislators extends AbstractCongressApi {
   }
 
   /**
-   * Get legislators by chamber (house or senate)
+   * Shared filtering helper for by-chamber/party/state queries.
+   * Iterates legislatorsMap, applies predicate to the latest YAML term, fetches full data.
    */
-  async getLegislatorsByChamber(
-    chamber: "house" | "senate",
+  private async filterAndFetchLegislators(
+    predicate: (latestTerm: RawLegislatorTerm | null) => boolean,
   ): Promise<Legislator[]> {
     await this.ensureInitialized();
+    const results: Legislator[] = [];
+    for (const [bioguideId, rawLegislator] of this.legislatorsMap) {
+      if (predicate(this.getLatestTerm(rawLegislator.terms))) {
+        const legislator = await this.getLegislator(bioguideId);
+        if (legislator) results.push(legislator);
+      }
+    }
+    return results;
+  }
+
+  /** Get legislators by chamber (house or senate) */
+  async getLegislatorsByChamber(chamber: "house" | "senate"): Promise<Legislator[]> {
     const type = chamber === "house" ? "rep" : "sen";
-    
-    const results: Legislator[] = [];
-    for (const [bioguideId, rawLegislator] of this.legislatorsMap) {
-      const latestTerm = this.getLatestTerm(rawLegislator.terms);
-      if (latestTerm?.type === type) {
-        const legislator = await this.getLegislator(bioguideId);
-        if (legislator) {
-          results.push(legislator);
-        }
-      }
-    }
-    
-    return results;
+    return this.filterAndFetchLegislators((t) => t?.type === type);
   }
 
-  /**
-   * Get legislators by party
-   */
+  /** Get legislators by party */
   async getLegislatorsByParty(party: string): Promise<Legislator[]> {
-    await this.ensureInitialized();
-    
-    const results: Legislator[] = [];
-    for (const [bioguideId, rawLegislator] of this.legislatorsMap) {
-      const latestTerm = this.getLatestTerm(rawLegislator.terms);
-      if (latestTerm?.party === party) {
-        const legislator = await this.getLegislator(bioguideId);
-        if (legislator) {
-          results.push(legislator);
-        }
-      }
-    }
-    
-    return results;
+    return this.filterAndFetchLegislators((t) => t?.party === party);
   }
 
-  /**
-   * Get legislators by state
-   */
+  /** Get legislators by state */
   async getLegislatorsByState(state: string): Promise<Legislator[]> {
-    await this.ensureInitialized();
-    
-    const results: Legislator[] = [];
-    for (const [bioguideId, rawLegislator] of this.legislatorsMap) {
-      const latestTerm = this.getLatestTerm(rawLegislator.terms);
-      if (latestTerm?.state === state) {
-        const legislator = await this.getLegislator(bioguideId);
-        if (legislator) {
-          results.push(legislator);
-        }
-      }
-    }
-    
-    return results;
+    return this.filterAndFetchLegislators((t) => t?.state === state);
   }
 
   /**
-   * Get all legislators with optimized caching
-   * Fetches member list first to check update dates, only fetches detail pages for updated members
-   * @param currentMember - When true, member list is filtered to current members (for update-date checks only)
-   * @param options - Optional. lastNCongresses: only include legislators who served in the last N congresses (e.g. 3 for 117–119)
+   * Get all legislators for a given congress term.
+   * Uses /member/congress/{congress} to scope the member list to that term,
+   * then compares updateDate strings (like getBillsWithVotes) to decide
+   * whether to fetch individual detail pages or read from cache.
+   *
+   * @param congress - The congressional term to fetch (defaults to this.congressionalTerm)
    */
-  async getAllLegislators(
-    currentMember: boolean = true,
-    options?: { lastNCongresses?: number }
-  ): Promise<Legislator[]> {
+  async getAllLegislators(congress?: number): Promise<Legislator[]> {
     await this.ensureInitialized();
 
-    const lastNCongresses = options?.lastNCongresses;
+    const term = congress ?? this.congressionalTerm;
+    const previousUpdateDates = this.readMemberUpdateDatesCache(term);
 
-    // Optionally restrict to legislators who served in the last N congresses (by term dates in YAML)
-    let bioguideIdsToProcess: Iterable<string>;
-    let total: number;
-    if (lastNCongresses != null && lastNCongresses > 0) {
-      const startCongress = Math.max(1, this.congressionalTerm - lastNCongresses + 1);
-      const rangeStart = this.getCongressDateRange(startCongress).start;
-      const rangeEnd = this.getCongressDateRange(this.congressionalTerm).end;
-      const filtered: string[] = [];
-      for (const [id, raw] of this.legislatorsMap) {
-        if (this.legislatorServedInRange(raw, rangeStart, rangeEnd)) filtered.push(id);
-      }
-      bioguideIdsToProcess = filtered;
-      total = filtered.length;
-      console.log(
-        `Filtering to legislators who served in congresses ${startCongress}-${this.congressionalTerm} (${total} of ${this.legislatorsMap.size})`
-      );
-    } else {
-      bioguideIdsToProcess = this.legislatorsMap.keys();
-      total = this.legislatorsMap.size;
-    }
-
-    // Fetch member list to get update dates for smart caching
-    console.log("Fetching member list to check for updates...");
-    const memberUpdateDates = new Map<string, string>();
+    // Fetch the current member list for this congress to get fresh updateDates
+    console.log(`Fetching member list for congress ${term}...`);
+    const currentUpdateDates = new Map<string, string>();
 
     try {
       let offset = 0;
-      const limit = 250; // Max allowed by API
+      const limit = 250;
       let hasMore = true;
 
       while (hasMore) {
-        const response = await this.fetchMembers({
-          currentMember,
-          offset,
-          limit,
-        });
-
-        // Store update dates
+        const response = await this.fetchMembersByCongress(term, { offset, limit });
         response.members.forEach((member) => {
-          memberUpdateDates.set(member.bioguideId, member.updateDate);
+          currentUpdateDates.set(member.bioguideId, member.updateDate);
         });
-
-        // Check if there are more pages
         hasMore = !!response.pagination.next;
         offset += limit;
-
         if (hasMore) {
           console.log(`Fetched ${offset} members, continuing...`);
         }
       }
 
-      console.log(`Checked ${memberUpdateDates.size} members for updates`);
+      console.log(`Found ${currentUpdateDates.size} members in congress ${term}`);
+      this.writeMemberUpdateDatesCache(term, currentUpdateDates);
     } catch (error) {
-      console.warn("Failed to fetch member list, will fetch all member details:", error);
+      console.warn("Failed to fetch member list, will use cached update dates:", error);
     }
 
+    // Determine the set of bioguide IDs to process: only those returned by the congress list
+    // Members absent from the congress list are YAML-only (historical) and skipped for API calls.
+    const bioguideIdsToProcess = currentUpdateDates.size > 0
+      ? [...currentUpdateDates.keys()]
+      : [...this.legislatorsMap.keys()];
+
+    const total = bioguideIdsToProcess.length;
     const results: Legislator[] = [];
     let fetchedCount = 0;
     let cachedCount = 0;
     let processed = 0;
 
     for (const bioguideId of bioguideIdsToProcess) {
-      // When the member list was successfully fetched, members absent from it are
-      // historical YAML-only members that will 404 on the API — pass null to skip
-      // the API call entirely. When the list fetch failed (size === 0), fall back
-      // to undefined so the existing "fetch to be safe" logic applies.
-      const updateDate: string | null | undefined = memberUpdateDates.size > 0
-        ? (memberUpdateDates.has(bioguideId) ? memberUpdateDates.get(bioguideId) : null)
-        : memberUpdateDates.get(bioguideId);
+      const currentUpdateDate = currentUpdateDates.get(bioguideId);
+      const previousUpdateDate = previousUpdateDates.get(bioguideId);
+
+      // String equality comparison — same pattern as getBillsWithVotes.previousUpdateDates
+      // undefined currentUpdateDate means member list fetch failed; treat as changed.
+      const updateDate: string | null | undefined = currentUpdateDates.size > 0
+        ? (currentUpdateDate !== undefined ? currentUpdateDate : null)
+        : undefined;
 
       if (updateDate !== null) {
-        if (this.shouldRefreshMemberCache(bioguideId, updateDate)) {
+        if (previousUpdateDate === undefined || previousUpdateDate !== currentUpdateDate) {
           fetchedCount++;
         } else {
           cachedCount++;
@@ -696,23 +635,40 @@ export class Legislators extends AbstractCongressApi {
       }
 
       processed++;
-      if (processed % 500 === 0 || processed === total) {
+      if (processed % 100 === 0 || processed === total) {
         console.log(`Processing legislators: ${processed}/${total}`);
       }
     }
 
     console.log(`Completed: ${fetchedCount} members fetched, ${cachedCount} loaded from cache`);
-    
     return results;
   }
 
   /**
-   * Find legislator by bioguide ID (alias for getLegislator)
+   * Reads the cached memberUpdateDates map for a given congress from disk.
+   * Returns an empty map if the file does not exist.
    */
-  async findLegislatorByBioguideId(
-    bioguideId: string,
-  ): Promise<Legislator | undefined> {
-    return this.getLegislator(bioguideId);
+  private readMemberUpdateDatesCache(congress: number): Map<string, string> {
+    const filePath = path.join(this.getCacheDir(), `memberUpdateDates-${congress}.json`);
+    try {
+      const raw = fs.readFileSync(filePath, 'utf8');
+      return new Map(Object.entries(JSON.parse(raw) as Record<string, string>));
+    } catch {
+      return new Map();
+    }
+  }
+
+  /**
+   * Writes the memberUpdateDates map to disk for use on the next run.
+   */
+  private writeMemberUpdateDatesCache(congress: number, dates: Map<string, string>): void {
+    const filePath = path.join(this.getCacheDir(), `memberUpdateDates-${congress}.json`);
+    try {
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, JSON.stringify(Object.fromEntries(dates), null, 2));
+    } catch (error) {
+      console.warn(`Failed to write member update dates cache:`, error);
+    }
   }
 
   /**

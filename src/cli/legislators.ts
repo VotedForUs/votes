@@ -4,6 +4,8 @@
 
 import * as fs from "fs";
 import * as path from "path";
+import * as https from "https";
+import * as http from "http";
 import { Legislators } from "../legislators/legislators.js";
 import type { Legislator, LegislatorSmall } from "../legislators/legislators.types.js";
 
@@ -34,44 +36,132 @@ export function reduceLegislator(legislator: Legislator): LegislatorSmall {
 }
 
 export interface GetLegislatorsOptions {
-  /** If set, only include legislators who served in the last N congresses (e.g. 3 = 117th–119th). Reduces file count for site performance. */
-  lastNCongresses?: number;
+  /** Congressional term to fetch (defaults to 119). */
+  congress?: number;
+  /** If set, download legislator images to this directory and update imageUrl to local path. */
+  imagesDir?: string;
+}
+
+type HttpGetFn = (url: string, callback: (res: any) => void) => { on: (event: string, cb: (...args: any[]) => void) => void };
+
+/**
+ * Downloads a legislator's image to imagesDir/{bioguideId}.{ext}.
+ * Skips if the file already exists (acts as permanent cache).
+ * Returns the local URL path (e.g. /images/legislators/A000001.jpg) or the original if download fails.
+ */
+export async function downloadLegislatorImage(
+  imageUrl: string,
+  bioguideId: string,
+  imagesDir: string,
+  fsModule: typeof fs = fs,
+  httpsGet: HttpGetFn = https.get,
+  httpGet: HttpGetFn = http.get,
+): Promise<string> {
+  const urlObj = new URL(imageUrl);
+  const urlExt = path.extname(urlObj.pathname).toLowerCase();
+  const ext = urlExt || '.jpg';
+  const filename = `${bioguideId}${ext}`;
+  const destPath = path.join(imagesDir, filename);
+
+  if (fsModule.existsSync(destPath)) {
+    return `/images/legislators/${filename}`;
+  }
+
+  return new Promise((resolve) => {
+    const requestGet = urlObj.protocol === 'https:' ? httpsGet : httpGet;
+    const req = requestGet(imageUrl, (res) => {
+      if (res.statusCode === 301 || res.statusCode === 302) {
+        const redirectUrl = res.headers.location;
+        if (redirectUrl) {
+          downloadLegislatorImage(redirectUrl, bioguideId, imagesDir, fsModule, httpsGet, httpGet)
+            .then(resolve)
+            .catch(() => resolve(imageUrl));
+        } else {
+          resolve(imageUrl);
+        }
+        return;
+      }
+      if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+        console.warn(`Failed to download image for ${bioguideId}: HTTP ${res.statusCode}`);
+        resolve(imageUrl);
+        return;
+      }
+      const fileStream = fsModule.createWriteStream(destPath);
+      res.pipe(fileStream);
+      fileStream.on('finish', () => {
+        fileStream.close();
+        resolve(`/images/legislators/${filename}`);
+      });
+      fileStream.on('error', () => {
+        console.warn(`Failed to write image for ${bioguideId}`);
+        resolve(imageUrl);
+      });
+    });
+    req.on('error', () => {
+      console.warn(`Failed to download image for ${bioguideId}`);
+      resolve(imageUrl);
+    });
+  });
 }
 
 /**
  * Generates legislators data and writes one JSON file per legislator to outputDir
  * @param outputDir - Directory to write [bioguideid].json files (defaults to .cache/legislators)
- * @param currentMember - Whether to fetch only current members (defaults to false = all members)
  * @param small - Whether to reduce legislator data to small format
- * @param options - Optional. lastNCongresses: only include legislators who served in the last N congresses
+ * @param options - Optional. congress: which congressional term to fetch (default 119)
  * @param fsModule - Optional custom fs module (for testing)
  * @param LegislatorsClass - Optional Legislators class (for testing)
  */
 export async function getLegislators(
   outputDir?: string,
-  currentMember: boolean = false,
   small: boolean = false,
   options?: GetLegislatorsOptions,
   fsModule: typeof fs = fs,
   LegislatorsClass: typeof Legislators = Legislators,
+  httpsGet?: Parameters<typeof downloadLegislatorImage>[4],
+  httpGet?: Parameters<typeof downloadLegislatorImage>[5],
 ): Promise<void> {
   const finalOutputDir = outputDir ?? path.join(process.cwd(), '.cache', 'legislators');
+  const congress = options?.congress ?? 119;
+  const imagesDir = options?.imagesDir;
   console.log(`Generating legislators data...`);
   console.log(`Output directory: ${finalOutputDir}`);
-  console.log(`Current members only: ${currentMember}`);
   console.log(`Small: ${small}`);
-  if (options?.lastNCongresses) {
-    console.log(`Last N congresses filter: ${options.lastNCongresses}`);
+  console.log(`Congress: ${congress}`);
+  if (imagesDir) {
+    console.log(`Images directory: ${imagesDir}`);
   }
   const legislators = new LegislatorsClass();
-  console.log(`Fetching ${currentMember ? 'current' : 'all'} legislators...`);
-  let allLegislators: Legislator[] | LegislatorSmall[] = await legislators.getAllLegislators(currentMember, {
-    lastNCongresses: options?.lastNCongresses,
-  });
+  const rawLegislators: Legislator[] = await legislators.getAllLegislators(congress);
+  console.log(`Fetched ${rawLegislators.length} legislators`);
+
+  if (imagesDir && !fsModule.existsSync(imagesDir)) {
+    fsModule.mkdirSync(imagesDir, { recursive: true });
+    console.log(`Created images directory: ${imagesDir}`);
+  }
+
+  // Optionally download images and rewrite imageUrl
+  let processedLegislators: Legislator[] = rawLegislators;
+  if (imagesDir) {
+    let imageCount = 0;
+    processedLegislators = await Promise.all(
+      rawLegislators.map(async (leg) => {
+        if (!leg.depiction?.imageUrl) return leg;
+        const localUrl = await downloadLegislatorImage(leg.depiction.imageUrl, leg.bioguideId, imagesDir, fsModule, httpsGet, httpGet);
+        if (localUrl !== leg.depiction.imageUrl) imageCount++;
+        return {
+          ...leg,
+          depiction: { ...leg.depiction, imageUrl: localUrl },
+        };
+      })
+    );
+    console.log(`Downloaded/verified ${imageCount} images`);
+  }
+
+  let allLegislators: Legislator[] | LegislatorSmall[] = processedLegislators;
   if (small) {
     allLegislators = allLegislators.map(reduceLegislator) as LegislatorSmall[];
   }
-  console.log(`Fetched ${allLegislators.length} legislators`);
   if (!fsModule.existsSync(finalOutputDir)) {
     fsModule.mkdirSync(finalOutputDir, { recursive: true });
     console.log(`Created output directory: ${finalOutputDir}`);

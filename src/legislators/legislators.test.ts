@@ -33,13 +33,14 @@ describe("Legislators", () => {
 
   beforeEach(() => {
     // Create Legislators instance with mocks
-    // Signature: (congressionalTerm, fetchFunction, cacheDir, yamlUtils, fsModule, xmlUtils)
+    // Use a unique temp cache dir per test so real cached API responses don't bleed in
+    const tempCacheDir = `/tmp/vfu-test-cache-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     legislators = new Legislators(
       119,
       fetchMock.fetchHandler as typeof fetch,
-      undefined, // cacheDir
+      tempCacheDir,
       MockYamlUtils as any,
-      undefined, // fsModule
+      undefined,
       MockXmlUtils as any
     );
     MockYamlUtils.reset();
@@ -465,16 +466,24 @@ describe("Legislators", () => {
     });
   });
 
-  describe("getAllLegislators with lastNCongresses", () => {
-    test("should filter to legislators who served in last N congresses", async () => {
+  describe("getAllLegislators with congress term", () => {
+    test("should fetch members for the specified congress term", async () => {
       MockYamlUtils.setMockData(LEGISLATORS_CURRENT_URL, mockLegislatorsData);
       MockYamlUtils.setMockData(LEGISLATORS_SOCIAL_URL, mockSocialMediaData);
       MockXmlUtils.setMockData(SENATE_MEMBERS_URL, mockSenateMembersData);
       await legislators.initialize();
 
-      const result = await legislators.getAllLegislators(false, { lastNCongresses: 3 });
+      const memberListResponse = {
+        members: [
+          { bioguideId: "A000001", updateDate: "2024-01-01", name: "Alex Anderson", partyName: "Republican", state: "CA", terms: [], url: "" },
+        ],
+        pagination: { count: 1 },
+        request: { contentType: "application/json", format: "json" },
+      };
+      fetchMock.get("begin:https://api.congress.gov/v3/member/congress/119", memberListResponse, { overwriteRoutes: true });
+
+      const result = await legislators.getAllLegislators(119);
       assert.ok(Array.isArray(result));
-      // Mock data has terms in 2021-2027 range (117th–119th); all should be included
       assert.ok(result.length >= 1);
     });
   });
@@ -674,13 +683,13 @@ describe("Legislators", () => {
   });
 
   describe("getAllLegislators with member list", () => {
-    test("should use null updateDate for members absent from member list API", async () => {
+    test("should only return members present in congress member list", async () => {
       MockYamlUtils.setMockData(LEGISLATORS_CURRENT_URL, mockLegislatorsData);
       MockYamlUtils.setMockData(LEGISLATORS_SOCIAL_URL, mockSocialMediaData);
       MockXmlUtils.setMockData(SENATE_MEMBERS_URL, mockSenateMembersData);
       await legislators.initialize();
 
-      // Member list returns only A000001 — B000002, C000003, F000006 are "historical"
+      // Congress list returns only A000001 — others are not in the 119th congress
       const memberListResponse = {
         members: [
           { bioguideId: "A000001", updateDate: "2024-01-01", name: "Alex Anderson", partyName: "Republican", state: "CA", terms: [], url: "" },
@@ -689,45 +698,45 @@ describe("Legislators", () => {
         request: { contentType: "application/json", format: "json" },
       };
 
-      fetchMock.get("begin:https://api.congress.gov/v3/member", memberListResponse);
+      fetchMock.get("begin:https://api.congress.gov/v3/member/congress/119", memberListResponse, { overwriteRoutes: true });
 
-      const result = await legislators.getAllLegislators(false);
+      const result = await legislators.getAllLegislators(119);
       assert.ok(Array.isArray(result));
-      // All 4 YAML members should still be in the output (historical ones from YAML only)
-      assert.strictEqual(result.length, 4);
-      // A000001 was in member list, others were historical (null updateDate, YAML only)
-      const a = result.find((r) => r.bioguideId === "A000001");
-      assert.ok(a);
+      // Only members in the congress list are processed
+      assert.strictEqual(result.length, 1);
+      assert.ok(result.find((r) => r.bioguideId === "A000001"));
     });
 
-    test("should handle paginated member list", async () => {
+    test("should handle paginated congress member list", async () => {
       MockYamlUtils.setMockData(LEGISLATORS_CURRENT_URL, mockLegislatorsData);
       MockYamlUtils.setMockData(LEGISLATORS_SOCIAL_URL, mockSocialMediaData);
       MockXmlUtils.setMockData(SENATE_MEMBERS_URL, mockSenateMembersData);
       await legislators.initialize();
 
-      const page1 = {
-        members: [
-          { bioguideId: "A000001", updateDate: "2024-01-01", name: "Alex Anderson", partyName: "Republican", state: "CA", terms: [], url: "" },
-        ],
-        pagination: { count: 2, next: "https://api.congress.gov/v3/member?offset=250" },
-        request: { contentType: "application/json", format: "json" },
-      };
-      const page2 = {
-        members: [
-          { bioguideId: "B000002", updateDate: "2024-01-01", name: "Blake Brown", partyName: "Democrat", state: "CA", terms: [], url: "" },
-        ],
-        pagination: { count: 2 },
-        request: { contentType: "application/json", format: "json" },
-      };
+      let callCount = 0;
+      fetchMock.get("begin:https://api.congress.gov/v3/member/congress/119", () => {
+        callCount++;
+        if (callCount === 1) {
+          return {
+            members: [
+              { bioguideId: "A000001", updateDate: "2024-01-01", name: "Alex Anderson", partyName: "Republican", state: "CA", terms: [], url: "" },
+            ],
+            pagination: { count: 2, next: "https://api.congress.gov/v3/member/congress/119?offset=250" },
+            request: { contentType: "application/json", format: "json" },
+          };
+        }
+        return {
+          members: [
+            { bioguideId: "B000002", updateDate: "2024-01-01", name: "Blake Brown", partyName: "Democrat", state: "CA", terms: [], url: "" },
+          ],
+          pagination: { count: 2 },
+          request: { contentType: "application/json", format: "json" },
+        };
+      });
 
-      fetchMock
-        .get("begin:https://api.congress.gov/v3/member?api_key=test-api-key-for-testing-only&format=json&currentMember=false&offset=0", page1)
-        .get("begin:https://api.congress.gov/v3/member?api_key=test-api-key-for-testing-only&format=json&currentMember=false&offset=250", page2);
-
-      const result = await legislators.getAllLegislators(false);
+      const result = await legislators.getAllLegislators(119);
       assert.ok(Array.isArray(result));
-      assert.strictEqual(result.length, 4);
+      assert.strictEqual(result.length, 2);
     });
   });
 

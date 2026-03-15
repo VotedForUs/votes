@@ -118,17 +118,6 @@ export class CongressApi extends Legislators {
   }
 
   /**
-   * Get member information by bioguide ID
-   * Combines Congress.gov API data with legislator data
-   * @param bioguideId - The bioguide ID of the member
-   * @returns Promise resolving to legislator data or undefined if not found
-   */
-  async getMember(bioguideId: string): Promise<Legislator | undefined> {
-    await this.ensureInitialized();
-    return this.getLegislator(bioguideId);
-  }
-
-  /**
    * Normalize raw party string to canonical voteParty: Republican, Democrat, or Independent.
    */
   private normalizeVoteParty(party: string): "Republican" | "Democrat" | "Independent" {

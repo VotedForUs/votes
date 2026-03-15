@@ -5,7 +5,6 @@ import {
   HouseRollCallVote,
   HouseRollCallVoteDetails,
   HouseVoteMember,
-  SenateVote,
   HouseVoteListResponse,
   HouseVoteResponse,
   HouseMembersResponse,
@@ -401,23 +400,6 @@ export abstract class AbstractCongressApi {
     }
   }
 
-  // ===== SENATE VOTES API METHODS =====
-  // Note: Senate votes use XML format and different endpoints
-  // These would be implemented by subclasses that need Senate functionality
-
-  /**
-   * Fetches Senate vote list for a given year
-   * Note: This is a placeholder - actual implementation would depend on Senate XML format
-   */
-  protected async fetchSenateVotes(
-    congress: number,
-    year: number,
-  ): Promise<SenateVote[]> {
-    // Senate votes are typically fetched from XML endpoints
-    // This would be implemented by subclasses
-    throw new Error("Senate vote fetching should be implemented by subclasses");
-  }
-
   // ===== MEMBERS API METHODS =====
 
   /**
@@ -433,6 +415,19 @@ export abstract class AbstractCongressApi {
    */
   protected async fetchMembers(params?: { currentMember?: boolean; offset?: number; limit?: number; fromDateTime?: string; toDateTime?: string }): Promise<MemberListResponse> {
     const endpoint = `/member`;
+    return this.makeCongressApiCall<MemberListResponse>(endpoint, params);
+  }
+
+  /**
+   * Fetches members of a specific congress term
+   * Uses /member/congress/{congress} which scopes the list to that term only,
+   * eliminating the need for date-range filtering on the YAML data.
+   */
+  protected async fetchMembersByCongress(
+    congress: number,
+    params?: { offset?: number; limit?: number },
+  ): Promise<MemberListResponse> {
+    const endpoint = `/member/congress/${congress}`;
     return this.makeCongressApiCall<MemberListResponse>(endpoint, params);
   }
 
@@ -482,5 +477,15 @@ export abstract class AbstractCongressApi {
   protected async fetchNominations(congress: number, params?: { offset?: number; limit?: number }): Promise<NominationListResponse> {
     const endpoint = `/nomination/${congress}`;
     return this.makeCongressApiCall<NominationListResponse>(endpoint, params);
+  }
+
+  // ===== SENATE VOTES API METHODS =====
+
+  /**
+   * Placeholder for Senate vote fetching — must be implemented by subclasses
+   * Senate votes are sourced from a different endpoint than House votes
+   */
+  protected async fetchSenateVotes(_congress: number, _year: number): Promise<never> {
+    throw new Error("Senate vote fetching should be implemented by subclasses");
   }
 }

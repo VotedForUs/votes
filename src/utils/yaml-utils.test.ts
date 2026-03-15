@@ -2,6 +2,9 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import { strict as assert } from "node:assert";
 import * as fs from "fs";
 import * as path from "path";
+import * as os from "os";
+import mock from "mock-fs";
+import fetchMock from "fetch-mock";
 import { YamlUtils, YamlDownloadConfig } from "./yaml-utils.js";
 
 describe("YamlUtils", () => {
@@ -165,6 +168,199 @@ describe("YamlUtils", () => {
         console.error("Legislators test failed with error:", error);
         throw error;
       }
+    });
+  });
+
+  describe("downloadYaml (mocked fetch)", () => {
+    let originalFetch: typeof globalThis.fetch;
+    const mockYaml = "- name: Test\n  id: 1\n";
+
+    beforeEach(() => {
+      fetchMock.hardReset();
+      mock({});
+      originalFetch = globalThis.fetch;
+      globalThis.fetch = fetchMock.fetchHandler as typeof fetch;
+    });
+
+    afterEach(() => {
+      fetchMock.hardReset();
+      mock.restore();
+      globalThis.fetch = originalFetch;
+    });
+
+    it("should throw on HTTP error response", async () => {
+      fetchMock.get(testUrl, { status: 404, body: "Not Found" });
+      await assert.rejects(
+        () => YamlUtils.downloadYaml({ url: testUrl, cacheDir: testCacheDir, cacheFilename: "err.json" }),
+        /HTTP 404/,
+      );
+    });
+
+    it("should skip cache when skipCache is true", async () => {
+      mock({ [testCacheDir + "/cached.json"]: JSON.stringify([{ existing: true }]) });
+      fetchMock.get(testUrl, { status: 200, body: mockYaml });
+
+      const result = await YamlUtils.downloadYaml({
+        url: testUrl,
+        cacheDir: testCacheDir,
+        cacheFilename: "cached.json",
+        useCache: true,
+        skipCache: true,
+      });
+
+      assert.strictEqual(result.fromCache, false);
+      assert.ok(Array.isArray(result.data));
+    });
+
+    it("should not save cache when useCache is false", async () => {
+      fetchMock.get(testUrl, { status: 200, body: mockYaml });
+
+      const result = await YamlUtils.downloadYaml({
+        url: testUrl,
+        cacheDir: testCacheDir,
+        cacheFilename: "nocache.json",
+        useCache: false,
+      });
+
+      assert.strictEqual(result.fromCache, false);
+      assert.strictEqual(result.cachePath, undefined);
+      assert.ok(!fs.existsSync(testCacheDir + "/nocache.json"));
+    });
+
+    it("should use default cache directory when cacheDir is omitted", async () => {
+      fetchMock.get(testUrl, { status: 200, body: mockYaml });
+
+      const result = await YamlUtils.downloadYaml({
+        url: testUrl,
+        cacheFilename: "default-cache.json",
+        useCache: true,
+      });
+
+      assert.ok(result.cachePath, "cachePath should be set");
+      assert.ok(result.cachePath!.includes("default-cache.json"));
+      if (fs.existsSync(result.cachePath!)) {
+        fs.unlinkSync(result.cachePath!);
+        const dir = path.dirname(result.cachePath!);
+        if (fs.existsSync(dir) && fs.readdirSync(dir).length === 0) {
+          fs.rmdirSync(dir);
+        }
+      }
+    });
+
+    it("should parse YAML and return object data", async () => {
+      fetchMock.get(testUrl, { status: 200, body: mockYaml });
+
+      const result = await YamlUtils.downloadYaml({
+        url: testUrl,
+        cacheDir: testCacheDir,
+        cacheFilename: "parsed.json",
+        useCache: true,
+      });
+
+      assert.ok(Array.isArray(result.data));
+      assert.strictEqual(result.fromCache, false);
+    });
+  });
+
+  describe("downloadYamlNoCache (mocked fetch)", () => {
+    let originalFetch: typeof globalThis.fetch;
+    const mockYaml = "- name: Test\n  id: 1\n";
+
+    beforeEach(() => {
+      fetchMock.hardReset();
+      originalFetch = globalThis.fetch;
+      globalThis.fetch = fetchMock.fetchHandler as typeof fetch;
+    });
+
+    afterEach(() => {
+      fetchMock.hardReset();
+      globalThis.fetch = originalFetch;
+    });
+
+    it("should download and parse YAML without caching", async () => {
+      fetchMock.get(testUrl, { status: 200, body: mockYaml });
+
+      const result = await YamlUtils.downloadYamlNoCache(testUrl);
+
+      assert.ok(Array.isArray(result));
+    });
+
+    it("should throw on HTTP error", async () => {
+      fetchMock.get(testUrl, { status: 500, body: "Server Error" });
+
+      await assert.rejects(
+        () => YamlUtils.downloadYamlNoCache(testUrl),
+        /HTTP 500/,
+      );
+    });
+  });
+
+  describe("clearCache", () => {
+    afterEach(() => mock.restore());
+
+    it("should clear cache for a specific URL", () => {
+      const url = testUrl;
+      const urlFilename = path.basename(new URL(url).pathname).replace(/\.yaml$/, ".json");
+      const cachePath = testCacheDir + "/" + urlFilename;
+      mock({ [cachePath]: '[]', [testCacheDir + "/other.json"]: '[]' });
+      assert.ok(fs.existsSync(cachePath));
+      YamlUtils.clearCache(testCacheDir, url);
+      assert.ok(!fs.existsSync(cachePath));
+      assert.ok(fs.existsSync(testCacheDir + "/other.json"), "other files untouched");
+    });
+
+    it("should clear all cache when no URL provided (real fs)", () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "yaml-cache-test-"));
+      fs.writeFileSync(path.join(tmpDir, "a.json"), "[]");
+      fs.writeFileSync(path.join(tmpDir, "b.json"), "[]");
+      assert.ok(fs.existsSync(tmpDir));
+      YamlUtils.clearCache(tmpDir);
+      assert.ok(!fs.existsSync(tmpDir));
+    });
+
+    it("should handle missing cache directory gracefully", () => {
+      mock({});
+      assert.doesNotThrow(() => YamlUtils.clearCache("/nonexistent-dir"));
+    });
+
+    it("should handle URL not in cache gracefully", () => {
+      mock({ [testCacheDir + "/a.json"]: "[]" });
+      assert.doesNotThrow(() => YamlUtils.clearCache(testCacheDir, "https://example.com/missing.yaml"));
+    });
+  });
+
+  describe("getCacheStats", () => {
+    afterEach(() => mock.restore());
+
+    it("should return empty stats for missing directory", () => {
+      mock({});
+      const stats = YamlUtils.getCacheStats("/nonexistent-dir");
+      assert.strictEqual(stats.totalFiles, 0);
+      assert.strictEqual(stats.totalSize, 0);
+    });
+
+    it("should return file stats for existing cache directory", () => {
+      mock({ [testCacheDir + "/a.json"]: '["data1"]', [testCacheDir + "/b.json"]: '["data2"]' });
+      const stats = YamlUtils.getCacheStats(testCacheDir);
+      assert.strictEqual(stats.totalFiles, 2);
+      assert.ok(stats.totalSize > 0);
+      assert.strictEqual(stats.files.length, 2);
+    });
+  });
+
+  describe("loadFromCache", () => {
+    afterEach(() => mock.restore());
+
+    it("should load and parse JSON data", () => {
+      const data = [{ id: 1, name: "Test" }];
+      mock({ "/cache/data.json": JSON.stringify(data) });
+      const result = YamlUtils.loadFromCache("/cache/data.json");
+      assert.deepStrictEqual(result, data);
+    });
+
+    it("should throw on missing file", () => {
+      mock({});
+      assert.throws(() => YamlUtils.loadFromCache("/nonexistent.json"), /Failed to load cached YAML/);
     });
   });
 

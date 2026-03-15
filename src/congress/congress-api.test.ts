@@ -377,11 +377,11 @@ describe("CongressApi", () => {
     });
   });
 
-  describe("getMember method", () => {
+  describe("getLegislator method", () => {
     test("should get member by bioguide ID", async () => {
       const bioguideId = "A000001";
       
-      const member = await congressApi.getMember(bioguideId);
+      const member = await congressApi.getLegislator(bioguideId);
       
       assert.ok(member);
       assert.strictEqual(member.id?.bioguide, bioguideId);
@@ -392,13 +392,13 @@ describe("CongressApi", () => {
     test("should return undefined for non-existent bioguide ID", async () => {
       const bioguideId = "NONEXISTENT";
       
-      const member = await congressApi.getMember(bioguideId);
+      const member = await congressApi.getLegislator(bioguideId);
       
       assert.strictEqual(member, undefined);
     });
 
     test("should handle empty bioguide ID", async () => {
-      const member = await congressApi.getMember("");
+      const member = await congressApi.getLegislator("");
       
       assert.strictEqual(member, undefined);
     });
@@ -1152,11 +1152,11 @@ describe("CongressApi", () => {
       );
     });
 
-    test("should handle getMember with initialization error", async () => {
+    test("should handle getLegislator with initialization error", async () => {
       MockYamlUtils.setShouldThrowError(true, "Initialization failed");
 
       await assert.rejects(
-        () => congressApi.getMember("A000001"),
+        () => congressApi.getLegislator("A000001"),
         /Initialization failed/
       );
     });
@@ -1165,7 +1165,7 @@ describe("CongressApi", () => {
   describe("integration scenarios", () => {
     test("should combine legislator data with Congress API data", async () => {
       // Get a member using legislator data
-      const member = await congressApi.getMember("A000001");
+      const member = await congressApi.getLegislator("A000001");
       assert.ok(member);
       assert.strictEqual(member.id?.bioguide, "A000001");
       
@@ -1183,9 +1183,9 @@ describe("CongressApi", () => {
       );
       assert.ok(legislator, "Should find legislator named Brown");
       
-      // Then get the same member by bioguide ID using the getMember method
+      // Then get the same member by bioguide ID using getLegislator
       const bioguideId = legislator.id?.bioguide || legislator.bioguideId;
-      const sameMember = await congressApi.getMember(bioguideId);
+      const sameMember = await congressApi.getLegislator(bioguideId);
       assert.ok(sameMember);
       assert.strictEqual(sameMember.bioguideId, bioguideId);
     });
@@ -1204,7 +1204,7 @@ describe("CongressApi", () => {
       assert.strictEqual(api118.getCongressionalTerm(), 118);
       
       // Should still be able to get legislator data (which is current)
-      const member = await api118.getMember("A000001");
+      const member = await api118.getLegislator("A000001");
       assert.ok(member);
       assert.strictEqual(member.id?.bioguide, "A000001");
     });
@@ -1213,11 +1213,11 @@ describe("CongressApi", () => {
   describe("caching behavior", () => {
     test("should cache legislator data between calls", async () => {
       // First call should initialize
-      const member1 = await congressApi.getMember("A000001");
+      const member1 = await congressApi.getLegislator("A000001");
       assert.ok(member1);
       
       // Second call should use cached data (no additional YAML downloads)
-      const member2 = await congressApi.getMember("B000002");
+      const member2 = await congressApi.getLegislator("B000002");
       assert.ok(member2);
       
       // Both should be available

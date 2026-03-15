@@ -50,16 +50,18 @@ program
   .command('legislators')
   .description('Generate legislators data (one [bioguideid].json per legislator in output directory)')
   .option('-o, --output <path>', 'Output directory for legislator JSON files (default: .cache/legislators)')
-  .option('-c, --current-only', 'Only current members (default: all members)', false)
+  .option('-t, --congress <number>', 'Congressional term to fetch (default: 119)', (v) => parseInt(v, 10))
   .option('-s, --small', 'Output reduced legislator data', false)
-  .option('-n, --last-n-congresses <number>', 'Only legislators who served in the last N congresses (e.g. 3 for 117th–119th)', (v) => parseInt(v, 10))
+  .option('-i, --images <dir>', 'Download legislator images to this directory and update imageUrl to local path')
   .action(async (options) => {
     try {
       await getLegislators(
         options.output,
-        options.currentOnly,
         options.small,
-        options.lastNCongresses != null ? { lastNCongresses: options.lastNCongresses } : undefined
+        {
+          congress: options.congress ?? undefined,
+          imagesDir: options.images ?? undefined,
+        }
       );
       process.exit(0);
     } catch (error) {
