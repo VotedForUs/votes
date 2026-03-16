@@ -1,3 +1,12 @@
+# [v1.1.0](https://github.com/VotedForUs/votes/compare/v1.0.4...v1.1.0) (2026-03-16)
+
+## ✨ New Features
+- [`4a1733f`](https://github.com/VotedForUs/votes/commit/4a1733f)  Export generateChangeSummary and changelog types from package index 
+
+## 🐛 Bug Fixes
+- [`b568d11`](https://github.com/VotedForUs/votes/commit/b568d11)  Remove overwriteRoutes option incompatible with fetch-mock v12 
+- [`8edb411`](https://github.com/VotedForUs/votes/commit/8edb411)  fixes bug only in ci
+
 # [v1.0.4](https://github.com/VotedForUs/votes/compare/v1.0.3...v1.0.4) (2026-03-12)
 
 # [v1.0.3](https://github.com/VotedForUs/votes/compare/v1.0.2...v1.0.3) (2026-03-12)
