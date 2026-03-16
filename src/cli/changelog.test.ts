@@ -696,14 +696,14 @@ describe('writePrBody', () => {
 
   test('writes markdown to pr body path', () => {
     mock({ '/repo/.github': {} });
-    writePrBody('## Test\nContent', '/repo/.github/pr-body.md', fs);
+    writePrBody('## Test\nContent', '/repo/.github/pr-body.md', fs, null);
     const content = fs.readFileSync('/repo/.github/pr-body.md', 'utf8');
     assert.equal(content, '## Test\nContent');
   });
 
   test('creates directory if it does not exist', () => {
     mock({});
-    writePrBody('content', '/new/dir/pr-body.md', fs);
+    writePrBody('content', '/new/dir/pr-body.md', fs, null);
     assert.ok(fs.existsSync('/new/dir'));
     assert.ok(fs.existsSync('/new/dir/pr-body.md'));
   });
@@ -826,6 +826,7 @@ describe('generateChangeSummary', () => {
       siteBaseUrl: 'https://votedfor.us',
       fsModule: fs,
       runGit: () => gitDiff,
+      stepSummaryPath: null,
     });
 
     assert.equal(entry.date, '2026-02-01');
@@ -847,6 +848,7 @@ describe('generateChangeSummary', () => {
       today: '2026-02-15',
       fsModule: fs,
       runGit: () => 'A\tdata/legislators/A000055.json',
+      stepSummaryPath: null,
     });
 
     const perRunPath = '/test/data/changelog/2026-02-15-run-xyz.json';
@@ -868,6 +870,7 @@ describe('generateChangeSummary', () => {
       today: '2026-02-15',
       fsModule: fs,
       runGit: () => 'A\tdata/legislators/A000055.json',
+      stepSummaryPath: null,
     });
 
     assert.ok(fs.existsSync('/test/data/changelog.json'));
@@ -888,6 +891,7 @@ describe('generateChangeSummary', () => {
       today: '2026-02-20',
       fsModule: fs,
       runGit: () => 'A\tdata/legislators/A000055.json',
+      stepSummaryPath: null,
     });
 
     assert.ok(fs.existsSync('/test/.github/pr-body.md'));
@@ -907,6 +911,7 @@ describe('generateChangeSummary', () => {
       today: '2026-03-01',
       fsModule: fs,
       runGit: () => '',
+      stepSummaryPath: null,
     });
     assert.equal(entry.legislators.added.length, 0);
     assert.equal(entry.bills.added.length, 0);

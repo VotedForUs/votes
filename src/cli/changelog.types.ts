@@ -68,4 +68,10 @@ export interface GenerateChangeSummaryOptions {
   fsModule?: typeof import('fs');
   /** Injectable git runner for testing */
   runGit?: (cmd: string) => string;
+  /**
+   * Override for the GITHUB_STEP_SUMMARY path.
+   * Pass `null` to explicitly disable step summary writing (useful in tests).
+   * Defaults to `process.env['GITHUB_STEP_SUMMARY']`.
+   */
+  stepSummaryPath?: string | null;
 }

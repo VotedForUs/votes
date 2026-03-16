@@ -463,7 +463,7 @@ export function writePrBody(
   markdown: string,
   prBodyPath: string,
   fsModule: typeof defaultFs = defaultFs,
-  stepSummaryPath?: string,
+  stepSummaryPath?: string | null,
 ): void {
   const dir = path.dirname(prBodyPath);
   if (!fsModule.existsSync(dir)) {
@@ -471,7 +471,8 @@ export function writePrBody(
   }
   fsModule.writeFileSync(prBodyPath, markdown, 'utf8');
 
-  const summaryPath = stepSummaryPath ?? process.env['GITHUB_STEP_SUMMARY'];
+  // null = explicitly disabled; undefined = read from env
+  const summaryPath = stepSummaryPath === null ? undefined : (stepSummaryPath ?? process.env['GITHUB_STEP_SUMMARY']);
   if (summaryPath) {
     fsModule.appendFileSync(summaryPath, markdown + '\n', 'utf8');
   }
@@ -521,7 +522,7 @@ export function generateChangeSummary(options: GenerateChangeSummaryOptions = {}
   console.log(`Updated: ${accumulatedPath}`);
 
   const markdown = buildMarkdown(entry);
-  writePrBody(markdown, prBodyPath, fsModule);
+  writePrBody(markdown, prBodyPath, fsModule, options.stepSummaryPath);
   console.log(`Written: ${prBodyPath}`);
 
   console.log(
