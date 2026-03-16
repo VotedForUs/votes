@@ -480,7 +480,7 @@ describe("Legislators", () => {
         pagination: { count: 1 },
         request: { contentType: "application/json", format: "json" },
       };
-      fetchMock.get("begin:https://api.congress.gov/v3/member/congress/119", memberListResponse, { overwriteRoutes: true });
+      fetchMock.get("begin:https://api.congress.gov/v3/member/congress/119", memberListResponse);
 
       const result = await legislators.getAllLegislators(119);
       assert.ok(Array.isArray(result));
@@ -698,7 +698,7 @@ describe("Legislators", () => {
         request: { contentType: "application/json", format: "json" },
       };
 
-      fetchMock.get("begin:https://api.congress.gov/v3/member/congress/119", memberListResponse, { overwriteRoutes: true });
+      fetchMock.get("begin:https://api.congress.gov/v3/member/congress/119", memberListResponse);
 
       const result = await legislators.getAllLegislators(119);
       assert.ok(Array.isArray(result));
