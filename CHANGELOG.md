@@ -1,3 +1,8 @@
+# [v1.1.1](https://github.com/VotedForUs/votes/compare/v1.1.0...v1.1.1) (2026-03-19)
+
+## 🐛 Bug Fixes
+- [`4ddea40`](https://github.com/VotedForUs/votes/commit/4ddea40)  auth in workflows for common
+
 # [v1.1.0](https://github.com/VotedForUs/votes/compare/v1.0.4...v1.1.0) (2026-03-16)
 
 ## ✨ New Features
