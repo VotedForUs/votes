@@ -1,3 +1,8 @@
+# [v1.1.2](https://github.com/VotedForUs/votes/compare/v1.1.1...v1.1.2) (2026-03-21)
+
+## 🐛 Bug Fixes
+- [`2e56ebe`](https://github.com/VotedForUs/votes/commit/2e56ebe)  changelog and liegislator bugfixes
+
 # [v1.1.1](https://github.com/VotedForUs/votes/compare/v1.1.0...v1.1.1) (2026-03-19)
 
 ## 🐛 Bug Fixes
