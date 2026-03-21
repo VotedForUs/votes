@@ -10,11 +10,9 @@ import {
   isChangelogPath,
   collectRawChanges,
   computeNameTitle,
-  extractLegislatorItem,
   getBillTitle,
   countRecordedVotes,
   hasLaws,
-  extractBillItem,
   buildChangelogEntry,
   buildMarkdown,
   writeChangelogEntry,
@@ -27,6 +25,11 @@ import type { ChangelogEntry, RawChange } from './changelog.types.js';
 
 const SITE_BASE = 'https://votedfor.us';
 const CWD = '/repo';
+const MD_DATA = '/md-data';
+
+function mdOpts(): { dataDir: string; siteBaseUrl: string; fsModule: typeof fs } {
+  return { dataDir: MD_DATA, siteBaseUrl: SITE_BASE, fsModule: fs };
+}
 
 // ===== HELPERS =====
 
@@ -158,43 +161,6 @@ describe('computeNameTitle', () => {
   });
 });
 
-describe('extractLegislatorItem', () => {
-  test('builds item from LegislatorSmall format', () => {
-    const item = extractLegislatorItem('A000055', {
-      nameTitle: 'Rep. Robert Aderholt (AL-4)',
-      state: 'AL',
-      party: 'Republican',
-      bioguide: 'A000055',
-    }, SITE_BASE);
-    assert.equal(item.bioguideId, 'A000055');
-    assert.equal(item.nameTitle, 'Rep. Robert Aderholt (AL-4)');
-    assert.equal(item.state, 'AL');
-    assert.equal(item.party, 'Republican');
-    assert.equal(item.url, 'https://votedfor.us/legislators/A000055');
-  });
-
-  test('builds item from full Legislator format', () => {
-    const item = extractLegislatorItem('B000123', {
-      bioguideId: 'B000123',
-      name: { official_full: 'Jane Brown' },
-      latest_term: { type: 'sen', state: 'OH', party: 'Democrat' },
-    }, SITE_BASE);
-    assert.equal(item.bioguideId, 'B000123');
-    assert.equal(item.nameTitle, 'Sen. Jane Brown (OH)');
-    assert.equal(item.state, 'OH');
-    assert.equal(item.party, 'Democrat');
-  });
-
-  test('falls back to bioguideId arg when json has no id', () => {
-    const item = extractLegislatorItem('C000999', {
-      nameTitle: 'Rep. No Id (TX-1)',
-      state: 'TX',
-      party: 'Republican',
-    }, SITE_BASE);
-    assert.equal(item.bioguideId, 'C000999');
-  });
-});
-
 describe('getBillTitle', () => {
   test('returns Short Title when present', () => {
     const title = getBillTitle({
@@ -255,31 +221,6 @@ describe('hasLaws', () => {
   });
 });
 
-describe('extractBillItem', () => {
-  test('builds item from bill info', () => {
-    const item = extractBillItem(
-      { congress: 119, billType: 'hr', number: '42' },
-      { id: '119-HR-42', title: 'Great Bill' },
-      SITE_BASE,
-    );
-    assert.equal(item.id, '119-HR-42');
-    assert.equal(item.title, 'Great Bill');
-    assert.equal(item.congress, 119);
-    assert.equal(item.billType, 'hr');
-    assert.equal(item.number, '42');
-    assert.equal(item.url, 'https://votedfor.us/bills/119/hr/42');
-  });
-
-  test('builds id from info when bill.id missing', () => {
-    const item = extractBillItem(
-      { congress: 119, billType: 's', number: '10' },
-      { title: 'Senate Bill' },
-      SITE_BASE,
-    );
-    assert.equal(item.id, '119-S-10');
-  });
-});
-
 // ===== buildChangelogEntry =====
 
 describe('buildChangelogEntry', () => {
@@ -322,7 +263,7 @@ describe('buildChangelogEntry', () => {
       TODAY, RUN_ID, CWD, SITE_BASE,
     );
     assert.equal(entry.legislators.added.length, 1);
-    assert.equal(entry.legislators.added[0]?.bioguideId, 'A000055');
+    assert.equal(entry.legislators.added[0], 'A000055');
     assert.equal(entry.legislators.updated.length, 0);
   });
 
@@ -347,7 +288,7 @@ describe('buildChangelogEntry', () => {
       TODAY, RUN_ID, CWD, SITE_BASE,
     );
     assert.equal(entry.legislators.removed.length, 1);
-    assert.equal(entry.legislators.removed[0]?.bioguideId, 'A000055');
+    assert.equal(entry.legislators.removed[0], 'A000055');
   });
 
   test('skips removed legislator when old content unavailable', () => {
@@ -370,7 +311,7 @@ describe('buildChangelogEntry', () => {
       TODAY, RUN_ID, CWD, SITE_BASE,
     );
     assert.equal(entry.bills.added.length, 1);
-    assert.equal(entry.bills.added[0]?.id, '119-HR-42');
+    assert.equal(entry.bills.added[0], '119-HR-42');
     assert.equal(entry.bills.updated.length, 0);
   });
 
@@ -404,7 +345,7 @@ describe('buildChangelogEntry', () => {
     );
     assert.equal(entry.bills.updated.length, 1);
     assert.equal(entry.bills.withNewVotes.length, 1);
-    assert.equal(entry.bills.withNewVotes[0]?.id, '119-HR-42');
+    assert.equal(entry.bills.withNewVotes[0], '119-HR-42');
   });
 
   test('detects bill that became law', () => {
@@ -420,7 +361,7 @@ describe('buildChangelogEntry', () => {
       TODAY, RUN_ID, CWD, SITE_BASE,
     );
     assert.equal(entry.bills.newLaws.length, 1);
-    assert.equal(entry.bills.newLaws[0]?.id, '119-HR-1');
+    assert.equal(entry.bills.newLaws[0], '119-HR-1');
   });
 
   test('does not duplicate law detection when bill was already a law', () => {
@@ -478,114 +419,151 @@ describe('buildChangelogEntry', () => {
 // ===== buildMarkdown =====
 
 describe('buildMarkdown', () => {
+  let originalCwd: string;
+
+  beforeEach(() => {
+    originalCwd = process.cwd();
+    mock({});
+  });
+
+  afterEach(() => {
+    mock.restore();
+    process.chdir(originalCwd);
+  });
+
   test('returns no-changes message for empty entry', () => {
-    const md = buildMarkdown(emptyEntry());
+    mock({ [MD_DATA]: {} });
+    const md = buildMarkdown(emptyEntry(), mdOpts());
     assert.ok(md.includes('_No content changes detected._'));
   });
 
   test('renders date in header', () => {
-    const md = buildMarkdown(emptyEntry({ date: '2026-03-15' }));
+    mock({ [MD_DATA]: {} });
+    const md = buildMarkdown(emptyEntry({ date: '2026-03-15' }), mdOpts());
     assert.ok(md.includes('2026-03-15'));
   });
 
-  test('renders New Legislators section with links', () => {
-    const md = buildMarkdown(emptyEntry({
-      legislators: {
-        added: [{ bioguideId: 'A000055', nameTitle: 'Rep. Aderholt (AL-4)', state: 'AL', party: 'R', url: `${SITE_BASE}/legislators/A000055` }],
-        updated: [],
-        removed: [],
-      },
-    }));
+  test('renders New Legislators section with links from data files', () => {
+    const legFile = JSON.stringify({
+      nameTitle: 'Rep. Aderholt (AL-4)',
+      state: 'AL',
+      party: 'Republican',
+      bioguide: 'A000055',
+    });
+    mock({ [`${MD_DATA}/legislators/A000055.json`]: legFile });
+    const md = buildMarkdown(
+      emptyEntry({ legislators: { added: ['A000055'], updated: [], removed: [] } }),
+      mdOpts(),
+    );
     assert.ok(md.includes('### New Legislators (1)'));
     assert.ok(md.includes('[Rep. Aderholt (AL-4)](https://votedfor.us/legislators/A000055)'));
   });
 
   test('renders Updated Legislators section', () => {
-    const md = buildMarkdown(emptyEntry({
-      legislators: {
-        added: [],
-        updated: [{ bioguideId: 'B000123', nameTitle: 'Sen. Brown (OH)', state: 'OH', party: 'D', url: `${SITE_BASE}/legislators/B000123` }],
-        removed: [],
-      },
-    }));
+    const legFile = JSON.stringify({
+      name: { official_full: 'Jane Brown' },
+      latest_term: { type: 'sen', state: 'OH', party: 'Democrat' },
+    });
+    mock({ [`${MD_DATA}/legislators/B000123.json`]: legFile });
+    const md = buildMarkdown(
+      emptyEntry({ legislators: { added: [], updated: ['B000123'], removed: [] } }),
+      mdOpts(),
+    );
     assert.ok(md.includes('### Updated Legislators (1)'));
-    assert.ok(md.includes('[Sen. Brown (OH)]'));
+    assert.ok(md.includes('[Sen. Jane Brown (OH)]'));
   });
 
   test('renders Removed Legislators without links', () => {
-    const md = buildMarkdown(emptyEntry({
-      legislators: {
-        added: [],
-        updated: [],
-        removed: [{ bioguideId: 'C000999', nameTitle: 'Rep. Gone (TX-1)', state: 'TX', party: 'R', url: `${SITE_BASE}/legislators/C000999` }],
-      },
-    }));
+    const legFile = JSON.stringify({
+      nameTitle: 'Rep. Gone (TX-1)',
+      state: 'TX',
+      party: 'Republican',
+    });
+    mock({ [`${MD_DATA}/legislators/C000999.json`]: legFile });
+    const md = buildMarkdown(
+      emptyEntry({ legislators: { added: [], updated: [], removed: ['C000999'] } }),
+      mdOpts(),
+    );
     assert.ok(md.includes('### Removed Legislators (1)'));
     assert.ok(md.includes('Rep. Gone (TX-1) (C000999)'));
   });
 
   test('renders Bills That Became Law section', () => {
-    const md = buildMarkdown(emptyEntry({
-      bills: {
-        added: [],
-        updated: [],
-        newLaws: [{ id: '119-HR-1', title: 'Great Law', congress: 119, billType: 'hr', number: '1', url: `${SITE_BASE}/bills/119/hr/1` }],
-        withNewVotes: [],
-      },
-    }));
+    const billFile = JSON.stringify({
+      id: '119-HR-1',
+      title: 'Great Law',
+      congress: 119,
+      type: 'hr',
+      number: '1',
+    });
+    mock({ [`${MD_DATA}/bills/119/hr/1.json`]: billFile });
+    const md = buildMarkdown(
+      emptyEntry({ bills: { added: [], updated: [], newLaws: ['119-HR-1'], withNewVotes: [] } }),
+      mdOpts(),
+    );
     assert.ok(md.includes('### Bills That Became Law (1)'));
     assert.ok(md.includes('[Great Law](https://votedfor.us/bills/119/hr/1)'));
   });
 
   test('renders Newly Voted-on Bills section', () => {
-    const md = buildMarkdown(emptyEntry({
-      bills: {
-        added: [{ id: '119-HR-5', title: 'New Bill', congress: 119, billType: 'hr', number: '5', url: `${SITE_BASE}/bills/119/hr/5` }],
-        updated: [],
-        newLaws: [],
-        withNewVotes: [],
-      },
-    }));
+    const billFile = JSON.stringify({
+      id: '119-HR-5',
+      title: 'New Bill',
+      congress: 119,
+      type: 'hr',
+      number: '5',
+    });
+    mock({ [`${MD_DATA}/bills/119/hr/5.json`]: billFile });
+    const md = buildMarkdown(
+      emptyEntry({ bills: { added: ['119-HR-5'], updated: [], newLaws: [], withNewVotes: [] } }),
+      mdOpts(),
+    );
     assert.ok(md.includes('### Newly Voted-on Bills (1)'));
     assert.ok(md.includes('[New Bill]'));
   });
 
   test('truncates Updated Bills to display limit and shows overflow count', () => {
-    const updated = Array.from({ length: 55 }, (_, i) => ({
-      id: `119-HR-${i}`,
-      title: `Bill ${i}`,
-      congress: 119,
-      billType: 'hr',
-      number: String(i),
-      url: `${SITE_BASE}/bills/119/hr/${i}`,
-    }));
-    const md = buildMarkdown(emptyEntry({ bills: { added: [], updated, newLaws: [], withNewVotes: [] } }));
+    const tree: Record<string, string> = {};
+    for (let i = 0; i < 55; i++) {
+      tree[`${MD_DATA}/bills/119/hr/${i}.json`] = JSON.stringify({
+        id: `119-HR-${i}`,
+        title: `Bill ${i}`,
+        congress: 119,
+        type: 'hr',
+        number: String(i),
+      });
+    }
+    mock(tree);
+    const updated = Array.from({ length: 55 }, (_, i) => `119-HR-${i}`);
+    const md = buildMarkdown(emptyEntry({ bills: { added: [], updated, newLaws: [], withNewVotes: [] } }), mdOpts());
     assert.ok(md.includes('### Updated Bills (55)'));
     assert.ok(md.includes('*(and 5 more)*'));
   });
 
   test('truncates Updated Legislators to display limit', () => {
-    const legislators_updated = Array.from({ length: 35 }, (_, i) => ({
-      bioguideId: `L${i}`,
-      nameTitle: `Rep. L${i}`,
-      state: 'CA',
-      party: 'D',
-      url: `${SITE_BASE}/legislators/L${i}`,
-    }));
-    const md = buildMarkdown(emptyEntry({
-      legislators: { added: [], updated: legislators_updated, removed: [] },
-    }));
+    const tree: Record<string, string> = {};
+    for (let i = 0; i < 35; i++) {
+      tree[`${MD_DATA}/legislators/L${i}.json`] = JSON.stringify({
+        nameTitle: `Rep. L${i}`,
+        state: 'CA',
+        party: 'Democrat',
+      });
+    }
+    mock(tree);
+    const legislators_updated = Array.from({ length: 35 }, (_, i) => `L${i}`);
+    const md = buildMarkdown(
+      emptyEntry({ legislators: { added: [], updated: legislators_updated, removed: [] } }),
+      mdOpts(),
+    );
     assert.ok(md.includes('*(and 5 more)*'));
   });
 
   test('does not show no-changes message when there are changes', () => {
-    const md = buildMarkdown(emptyEntry({
-      legislators: {
-        added: [{ bioguideId: 'X', nameTitle: 'Rep. X (AA-1)', state: 'AA', party: 'D', url: `${SITE_BASE}/legislators/X` }],
-        updated: [],
-        removed: [],
-      },
-    }));
+    mock({ [`${MD_DATA}/legislators/X.json`]: JSON.stringify({ nameTitle: 'Rep. X (AA-1)', state: 'AA', party: 'D' }) });
+    const md = buildMarkdown(
+      emptyEntry({ legislators: { added: ['X'], updated: [], removed: [] } }),
+      mdOpts(),
+    );
     assert.ok(!md.includes('_No content changes detected._'));
   });
 });
@@ -917,5 +895,24 @@ describe('generateChangeSummary', () => {
     assert.equal(entry.bills.added.length, 0);
     const prBody = fs.readFileSync('/test/.github/pr-body.md', 'utf8');
     assert.ok(prBody.includes('_No content changes detected._'));
+  });
+
+  test('does not write accumulated changelog when accumulatedPath omitted', () => {
+    mock({
+      '/test/data/legislators/A000055.json': JSON.stringify({ bioguideId: 'A000055', nameTitle: 'Rep. X' }),
+      '/test/.github': {},
+    });
+    generateChangeSummary({
+      cwd: '/test',
+      dataDir: '/test/data',
+      changelogDir: '/test/data/changelog',
+      prBodyPath: '/test/.github/pr-body.md',
+      runId: 'run-no-acc',
+      today: '2026-04-01',
+      fsModule: fs,
+      runGit: () => 'A\tdata/legislators/A000055.json',
+      stepSummaryPath: null,
+    });
+    assert.ok(!fs.existsSync('/test/data/changelog.json'));
   });
 });

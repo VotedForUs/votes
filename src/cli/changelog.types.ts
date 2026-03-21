@@ -1,24 +1,7 @@
 /**
  * Types for the structured changelog entry generated after each data update.
- * Written to data/changelog/{date}-{runId}.json and accumulated in data/changelog.json.
+ * Written to data/changelog/{date}-{runId}.json (IDs only — display resolved at render / PR time).
  */
-
-export interface LegislatorChangeItem {
-  bioguideId: string;
-  nameTitle: string;
-  state: string;
-  party: string;
-  url: string;
-}
-
-export interface BillChangeItem {
-  id: string;
-  title: string;
-  congress: number;
-  billType: string;
-  number: string;
-  url: string;
-}
 
 export interface ChangelogEntry {
   /** ISO date string: YYYY-MM-DD */
@@ -26,17 +9,17 @@ export interface ChangelogEntry {
   /** GITHUB_RUN_ID or Date.now() string for local runs */
   runId: string;
   legislators: {
-    added: LegislatorChangeItem[];
-    updated: LegislatorChangeItem[];
-    removed: LegislatorChangeItem[];
+    /** Bioguide IDs */
+    added: string[];
+    updated: string[];
+    removed: string[];
   };
   bills: {
-    added: BillChangeItem[];
-    updated: BillChangeItem[];
-    /** Bills that became law since the last update */
-    newLaws: BillChangeItem[];
-    /** Bills that received new recorded votes since the last update */
-    withNewVotes: BillChangeItem[];
+    /** Bill ids: {congress}-{TYPE}-{number} e.g. 119-hr-1 */
+    added: string[];
+    updated: string[];
+    newLaws: string[];
+    withNewVotes: string[];
   };
 }
 
@@ -52,7 +35,10 @@ export interface GenerateChangeSummaryOptions {
   dataDir?: string;
   /** Path to the data/changelog/ directory (default: {dataDir}/changelog) */
   changelogDir?: string;
-  /** Path to the accumulated changelog JSON (default: {dataDir}/changelog.json) */
+  /**
+   * Path to the accumulated changelog JSON array (legacy).
+   * If omitted, accumulated file is not written.
+   */
   accumulatedPath?: string;
   /** Path to write the PR body markdown (default: {cwd}/.github/pr-body.md) */
   prBodyPath?: string;
@@ -74,4 +60,14 @@ export interface GenerateChangeSummaryOptions {
    * Defaults to `process.env['GITHUB_STEP_SUMMARY']`.
    */
   stepSummaryPath?: string | null;
+}
+
+/** Options for {@link import('./changelog.js').buildMarkdown} */
+export interface BuildMarkdownOptions {
+  /** Injectable fs (default: node:fs) */
+  fsModule?: typeof import('fs');
+  /** Absolute path to data directory (contains legislators/, bills/) */
+  dataDir: string;
+  /** Base URL for links (default: https://votedfor.us) */
+  siteBaseUrl?: string;
 }

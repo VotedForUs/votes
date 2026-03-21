@@ -3,7 +3,13 @@ import assert from "node:assert";
 import { EventEmitter } from "node:events";
 import mock from "mock-fs";
 import fs from "node:fs";
-import { getLegislators, reduceLegislator, buildLegislatorsFromCache, downloadLegislatorImage } from "./legislators.js";
+import {
+  getLegislators,
+  reduceLegislator,
+  buildLegislatorsFromCache,
+  downloadLegislatorImage,
+  legislatorJsonWithoutUpdateDates,
+} from "./legislators.js";
 import { wrapFsWithThrow } from "../utils/mocks/wrap-fs-with-throw.js";
 import { MockLegislators, mockLegislatorsOutput } from "../legislators/mocks/mock-legislators.js";
 import type { Legislator } from "../legislators/legislators.types.js";
@@ -73,6 +79,21 @@ describe("CLI Legislators Module", () => {
     const content = fs.readFileSync(filePath, "utf-8");
     return content ? JSON.parse(content) : null;
   };
+
+  describe("legislatorJsonWithoutUpdateDates", () => {
+    test("removes updateDate and recurses", () => {
+      const input = {
+        bioguideId: "A000001",
+        updateDate: "2025-01-01",
+        nested: { updateDate: "x", keep: 1 },
+      };
+      const out = legislatorJsonWithoutUpdateDates(input) as Record<string, unknown>;
+      assert.ok(!('updateDate' in out));
+      const nested = out.nested as Record<string, unknown>;
+      assert.ok(!('updateDate' in nested));
+      assert.strictEqual(nested.keep, 1);
+    });
+  });
 
   describe("reduceLegislator", () => {
     test("should reduce representative with all required fields", () => {
@@ -382,6 +403,23 @@ describe("CLI Legislators Module", () => {
       });
 
       assert.strictEqual(count, 0);
+    });
+
+    test("skips write when only updateDate differs", () => {
+      const baseLeg = { ...mockLegislatorsOutput[0], updateDate: "2025-01-01" };
+      mock({
+        "/cache/all-legislators.json": JSON.stringify([{ ...baseLeg, updateDate: "2099-12-31" }]),
+        "/output/A000001.json": JSON.stringify(baseLeg, null, 2),
+      });
+      const mtimeBefore = fs.statSync("/output/A000001.json").mtimeMs;
+      const count = buildLegislatorsFromCache({
+        cachePath: "/cache/all-legislators.json",
+        outputDir: "/output",
+        fsModule: fs,
+      });
+      assert.strictEqual(count, 1);
+      const mtimeAfter = fs.statSync("/output/A000001.json").mtimeMs;
+      assert.strictEqual(mtimeBefore, mtimeAfter);
     });
   });
 });

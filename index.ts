@@ -55,11 +55,10 @@ export type {
   BillChamberVotes,
 } from './src/congress/congress-api.types.js';
 // Changelog utilities
-export { generateChangeSummary } from './src/cli/changelog.js';
+export { generateChangeSummary, buildMarkdown } from './src/cli/changelog.js';
 export type {
   ChangelogEntry,
-  BillChangeItem,
-  LegislatorChangeItem,
   RawChange,
   GenerateChangeSummaryOptions,
+  BuildMarkdownOptions,
 } from './src/cli/changelog.types.js';

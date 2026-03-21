@@ -1,7 +1,11 @@
 /**
- * CLI module for generating structured changelog entries from data/ git changes.
+ * Changelog generation for data-update workflows.
  *
- * All side-effectful dependencies (fs, git) are injectable for testability.
+ * Reads git diffs under the data directory, builds a {@link ChangelogEntry} with legislator/bill
+ * **IDs only**, writes `changelog/{date}-{runId}.json`, optionally prepends a legacy accumulated
+ * JSON array, and emits PR/step summary markdown by resolving titles from on-disk JSON.
+ *
+ * Side effects (`fs`, `git`) are injectable for tests via options or parameters.
  */
 
 import { execSync } from 'node:child_process';
@@ -9,19 +13,39 @@ import * as defaultFs from 'node:fs';
 import * as path from 'node:path';
 import type {
   ChangelogEntry,
-  BillChangeItem,
-  LegislatorChangeItem,
   RawChange,
   GenerateChangeSummaryOptions,
+  BuildMarkdownOptions,
 } from './changelog.types.js';
 
-export type { ChangelogEntry, BillChangeItem, LegislatorChangeItem, RawChange, GenerateChangeSummaryOptions };
+export type { ChangelogEntry, RawChange, GenerateChangeSummaryOptions, BuildMarkdownOptions };
 
 const DEFAULT_SITE_BASE_URL = 'https://votedfor.us';
 
+/**
+ * Parse a canonical bill id string into path segments for `data/bills/{congress}/{type}/{number}.json`.
+ *
+ * @param billId - Form `{congress}-{TYPE}-{number}` (e.g. `119-HR-42`, `119-hconres-14`).
+ * @returns Parsed parts or `null` if the string does not match.
+ */
+export function parseBillId(
+  billId: string,
+): { congress: number; billTypeLower: string; number: string } | null {
+  const m = billId.match(/^(\d+)-([A-Za-z]+)-(.+)$/);
+  if (!m) return null;
+  const congress = parseInt(m[1]!, 10);
+  if (Number.isNaN(congress)) return null;
+  return { congress, billTypeLower: m[2]!.toLowerCase(), number: m[3]! };
+}
+
 // ===== GIT UTILITIES =====
 
-/** Default git runner using execSync */
+/**
+ * Run a git command and return trimmed stdout; empty string on failure (e.g. missing repo).
+ *
+ * @param cmd - Full git invocation (e.g. `git show HEAD:path`).
+ * @param cwd - Working directory for the subprocess.
+ */
 export function defaultRunGit(cmd: string, cwd: string = process.cwd()): string {
   try {
     return execSync(cmd, { encoding: 'utf8', cwd }).trim();
@@ -32,17 +56,23 @@ export function defaultRunGit(cmd: string, cwd: string = process.cwd()): string 
 
 // ===== PATH PARSERS =====
 
+/** Segments from a repo-relative bill JSON path under `dataPrefix/bills/`. */
 interface BillPathInfo {
   congress: number;
   billType: string;
   number: string;
 }
 
+/**
+ * Parse `{dataPrefix}/bills/{congress}/{billType}/{number}.json` from a repo-relative path.
+ *
+ * @param repoRelativePath - Path as reported by git (forward slashes).
+ * @param dataPrefix - Root data folder relative to repo root (e.g. `data` or `src/data`).
+ */
 export function parseBillPath(repoRelativePath: string, dataPrefix = 'data'): BillPathInfo | null {
-  // {dataPrefix}/bills/{congress}/{billType}/{number}.json
   const prefixParts = dataPrefix.replace(/\\/g, '/').split('/').filter(Boolean);
   const parts = repoRelativePath.replace(/\\/g, '/').split('/');
-  const expectedLength = prefixParts.length + 4; // prefix + bills + congress + billType + filename
+  const expectedLength = prefixParts.length + 4;
   if (parts.length < expectedLength) return null;
   for (let i = 0; i < prefixParts.length; i++) {
     if (parts[i] !== prefixParts[i]) return null;
@@ -58,11 +88,13 @@ export function parseBillPath(repoRelativePath: string, dataPrefix = 'data'): Bi
   return { congress, billType, number };
 }
 
+/**
+ * Parse `{dataPrefix}/legislators/{bioguideId}.json` and return the bioguide id (filename stem).
+ */
 export function parseLegislatorPath(repoRelativePath: string, dataPrefix = 'data'): string | null {
-  // {dataPrefix}/legislators/{bioguideId}.json
   const prefixParts = dataPrefix.replace(/\\/g, '/').split('/').filter(Boolean);
   const parts = repoRelativePath.replace(/\\/g, '/').split('/');
-  const expectedLength = prefixParts.length + 2; // prefix + legislators + filename
+  const expectedLength = prefixParts.length + 2;
   if (parts.length < expectedLength) return null;
   for (let i = 0; i < prefixParts.length; i++) {
     if (parts[i] !== prefixParts[i]) return null;
@@ -74,6 +106,9 @@ export function parseLegislatorPath(repoRelativePath: string, dataPrefix = 'data
   return path.basename(filename, '.json');
 }
 
+/**
+ * Whether the path is under `{dataPrefix}/changelog/` (per-run JSON lives here; excluded from diff aggregation).
+ */
 export function isChangelogPath(repoRelativePath: string, dataPrefix = 'data'): boolean {
   const prefix = dataPrefix.replace(/\\/g, '/').replace(/\/$/, '');
   return repoRelativePath.startsWith(`${prefix}/changelog/`);
@@ -82,12 +117,12 @@ export function isChangelogPath(repoRelativePath: string, dataPrefix = 'data'): 
 // ===== RAW CHANGE COLLECTION =====
 
 /**
- * Collect git status changes in dataPrefix/ (working tree vs HEAD).
- * Excludes changelog files themselves to avoid recursion.
+ * List added/modified/deleted paths under the data tree from git (diff HEAD, then staged, then porcelain).
+ * Omits paths under `{dataPrefix}/changelog/` so new changelog files do not feed into the next summary.
  *
- * @param runGit - injectable git runner (default: execSync wrapper)
- * @param cwd - working directory for git commands (default: process.cwd())
- * @param dataPrefix - repo-relative path prefix for data dir (default: 'data')
+ * @param runGit - Injected runner; default uses {@link defaultRunGit} with `cwd`.
+ * @param cwd - Repo root for git commands when using the default runner.
+ * @param dataPrefix - Same prefix as {@link parseBillPath} / {@link parseLegislatorPath}.
  */
 export function collectRawChanges(
   runGit: (cmd: string) => string = (cmd) => defaultRunGit(cmd),
@@ -141,6 +176,9 @@ type LegislatorJson = {
   name?: { official_full?: string };
 };
 
+/**
+ * Human-readable legislator label for markdown: prefers `nameTitle`, else builds from name + latest term.
+ */
 export function computeNameTitle(data: LegislatorJson): string {
   if (data.nameTitle) return data.nameTitle;
   const fullName = data.name?.official_full ?? '';
@@ -150,21 +188,6 @@ export function computeNameTitle(data: LegislatorJson): string {
     return `Sen. ${fullName} (${term.state ?? ''})`;
   }
   return `Rep. ${fullName} (${term.state ?? ''}-${term.district ?? ''})`;
-}
-
-export function extractLegislatorItem(
-  bioguideId: string,
-  data: LegislatorJson,
-  siteBaseUrl: string = DEFAULT_SITE_BASE_URL,
-): LegislatorChangeItem {
-  const id = data.bioguideId ?? data.bioguide ?? bioguideId;
-  return {
-    bioguideId: id,
-    nameTitle: computeNameTitle(data),
-    state: data.state ?? data.latest_term?.state ?? '',
-    party: data.party ?? data.latest_term?.party ?? '',
-    url: `${siteBaseUrl}/legislators/${id}`,
-  };
 }
 
 type BillJson = {
@@ -183,11 +206,13 @@ type BillJson = {
   };
 };
 
+/** Prefer Congress.gov short title when present, else `title`, else `"Unknown"`. */
 export function getBillTitle(data: BillJson): string {
   const shortTitle = data.titles?.titles?.find(t => t.titleType?.startsWith('Short Title'))?.title;
   return shortTitle ?? data.title ?? 'Unknown';
 }
 
+/** Total count of `recordedVotes` entries across all actions. */
 export function countRecordedVotes(data: BillJson): number {
   let count = 0;
   for (const action of data.actions?.actions ?? []) {
@@ -196,38 +221,29 @@ export function countRecordedVotes(data: BillJson): number {
   return count;
 }
 
+/** True if the bill has a non-empty `laws` array (enacted). */
 export function hasLaws(data: BillJson): boolean {
   return Array.isArray(data.laws) && data.laws.length > 0;
 }
 
-export function extractBillItem(
-  info: BillPathInfo,
-  data: BillJson,
-  siteBaseUrl: string = DEFAULT_SITE_BASE_URL,
-): BillChangeItem {
-  const id = data.id ?? `${info.congress}-${info.billType.toUpperCase()}-${info.number}`;
-  return {
-    id,
-    title: getBillTitle(data),
-    congress: info.congress,
-    billType: info.billType,
-    number: info.number,
-    url: `${siteBaseUrl}/bills/${info.congress}/${info.billType.toLowerCase()}/${info.number}`,
-  };
+/** Canonical bill id: `data.id` or `{congress}-{TYPE_UPPER}-{number}`. */
+function billIdFromPathInfo(info: BillPathInfo, data: BillJson): string {
+  return data.id ?? `${info.congress}-${info.billType.toUpperCase()}-${info.number}`;
 }
 
 // ===== CHANGELOG ENTRY BUILDER =====
 
 /**
- * Build a structured ChangelogEntry from raw git changes.
+ * Turn raw git file changes into a {@link ChangelogEntry} (IDs only).
  *
- * @param changes - list of raw file changes
- * @param readNewFile - reads working-tree file content by absolute path; returns null on error
- * @param readOldGitFile - reads file content from git HEAD by repo-relative path; returns null on miss
- * @param today - ISO date string YYYY-MM-DD
- * @param runId - unique run identifier
- * @param cwd - repo root for resolving absolute paths
- * @param siteBaseUrl - base URL for building links
+ * @param changes - From {@link collectRawChanges}.
+ * @param readNewFile - Read working-tree file at absolute path (for `A` / `M`).
+ * @param readOldGitFile - Read `HEAD` blob for deleted or old bill JSON (`D` / diff for bills).
+ * @param today - ISO date `YYYY-MM-DD` for the entry.
+ * @param runId - Run identifier (e.g. `GITHUB_RUN_ID`).
+ * @param cwd - Repo root; joined with `repoRelativePath` for `readNewFile`.
+ * @param _siteBaseUrl - Reserved for future use (URLs are not stored in the entry).
+ * @param dataPrefix - Data directory prefix relative to repo root.
  */
 export function buildChangelogEntry(
   changes: RawChange[],
@@ -236,7 +252,7 @@ export function buildChangelogEntry(
   today: string,
   runId: string,
   cwd: string = process.cwd(),
-  siteBaseUrl: string = DEFAULT_SITE_BASE_URL,
+  _siteBaseUrl: string = DEFAULT_SITE_BASE_URL,
   dataPrefix = 'data',
 ): ChangelogEntry {
   const entry: ChangelogEntry = {
@@ -256,18 +272,21 @@ export function buildChangelogEntry(
         const raw = readOldGitFile(repoRelativePath);
         if (raw) {
           const data = safeParseJson<LegislatorJson>(raw);
-          if (data) entry.legislators.removed.push(extractLegislatorItem(bioguideId, data, siteBaseUrl));
+          if (data) {
+            const id = data.bioguideId ?? data.bioguide ?? bioguideId;
+            entry.legislators.removed.push(id);
+          }
         }
       } else {
         const raw = readNewFile(absPath);
         if (raw) {
           const data = safeParseJson<LegislatorJson>(raw);
           if (data) {
-            const item = extractLegislatorItem(bioguideId, data, siteBaseUrl);
+            const id = data.bioguideId ?? data.bioguide ?? bioguideId;
             if (status === 'A') {
-              entry.legislators.added.push(item);
+              entry.legislators.added.push(id);
             } else {
-              entry.legislators.updated.push(item);
+              entry.legislators.updated.push(id);
             }
           }
         }
@@ -281,7 +300,7 @@ export function buildChangelogEntry(
         const raw = readNewFile(absPath);
         if (raw) {
           const data = safeParseJson<BillJson>(raw);
-          if (data) entry.bills.added.push(extractBillItem(billInfo, data, siteBaseUrl));
+          if (data) entry.bills.added.push(billIdFromPathInfo(billInfo, data));
         }
       } else if (status === 'M') {
         const newRaw = readNewFile(absPath);
@@ -289,18 +308,18 @@ export function buildChangelogEntry(
         const newData = safeParseJson<BillJson>(newRaw);
         if (!newData) continue;
 
-        const billItem = extractBillItem(billInfo, newData, siteBaseUrl);
-        entry.bills.updated.push(billItem);
+        const id = billIdFromPathInfo(billInfo, newData);
+        entry.bills.updated.push(id);
 
         const oldRaw = readOldGitFile(repoRelativePath);
         const oldData = oldRaw ? safeParseJson<BillJson>(oldRaw) : null;
         const oldVoteCount = oldData ? countRecordedVotes(oldData) : 0;
 
         if (countRecordedVotes(newData) > oldVoteCount) {
-          entry.bills.withNewVotes.push(billItem);
+          entry.bills.withNewVotes.push(id);
         }
         if (!hasLaws(oldData ?? {}) && hasLaws(newData)) {
-          entry.bills.newLaws.push(billItem);
+          entry.bills.newLaws.push(id);
         }
       }
       continue;
@@ -310,6 +329,7 @@ export function buildChangelogEntry(
   return entry;
 }
 
+/** Parse JSON or return `null` on failure. */
 function safeParseJson<T>(raw: string): T | null {
   try {
     return JSON.parse(raw) as T;
@@ -321,8 +341,9 @@ function safeParseJson<T>(raw: string): T | null {
 // ===== FILE WRITERS =====
 
 /**
- * Write a per-run changelog entry to changelogDir/{date}-{runId}.json.
- * @returns The path of the written file.
+ * Write one per-run changelog file: `{changelogDir}/{date}-{runId}.json`.
+ *
+ * @returns Absolute path written.
  */
 export function writeChangelogEntry(
   entry: ChangelogEntry,
@@ -339,8 +360,8 @@ export function writeChangelogEntry(
 }
 
 /**
- * Prepend entry to the accumulated changelog.json array.
- * Creates the file if it does not yet exist.
+ * Legacy: prepend `entry` to a JSON array at `accumulatedPath`. Corrupt files are replaced with `[entry]`.
+ * Prefer per-run files only; call only when `accumulatedPath` is set explicitly.
  */
 export function updateAccumulatedChangelog(
   entry: ChangelogEntry,
@@ -365,31 +386,84 @@ export function updateAccumulatedChangelog(
   fsModule.writeFileSync(accumulatedPath, JSON.stringify(existing, null, 2), 'utf8');
 }
 
-// ===== MARKDOWN BUILDER =====
+// ===== MARKDOWN BUILDER (resolves ids from dataDir) =====
 
 const LEGISLATOR_DISPLAY_LIMIT = 30;
 const BILL_DISPLAY_LIMIT = 50;
 
+/** Markdown bullet with link for an added/updated legislator id. */
+function readLegislatorLine(
+  bioguideId: string,
+  opts: BuildMarkdownOptions,
+): { md: string } {
+  const fsModule = opts.fsModule ?? defaultFs;
+  const base = opts.siteBaseUrl ?? DEFAULT_SITE_BASE_URL;
+  const filePath = path.join(opts.dataDir, 'legislators', `${bioguideId}.json`);
+  try {
+    const raw = fsModule.readFileSync(filePath, 'utf8');
+    const data = safeParseJson<LegislatorJson>(raw);
+    const label = data ? computeNameTitle(data) : bioguideId;
+    return { md: `* [${label}](${base}/legislators/${bioguideId})` };
+  } catch {
+    return { md: `* [${bioguideId}](${base}/legislators/${bioguideId})` };
+  }
+}
+
+/** Markdown bullet with link for a bill id, using on-disk bill JSON for title when available. */
+function readBillLine(
+  billId: string,
+  opts: BuildMarkdownOptions,
+): { md: string } {
+  const fsModule = opts.fsModule ?? defaultFs;
+  const base = opts.siteBaseUrl ?? DEFAULT_SITE_BASE_URL;
+  const parsed = parseBillId(billId);
+  if (!parsed) {
+    return { md: `* ${billId}` };
+  }
+  const filePath = path.join(
+    opts.dataDir,
+    'bills',
+    String(parsed.congress),
+    parsed.billTypeLower,
+    `${parsed.number}.json`,
+  );
+  try {
+    const raw = fsModule.readFileSync(filePath, 'utf8');
+    const data = safeParseJson<BillJson>(raw);
+    const title = data ? getBillTitle(data) : billId;
+    const url = `${base}/bills/${parsed.congress}/${parsed.billTypeLower}/${parsed.number}`;
+    return { md: `* [${title}](${url})` };
+  } catch {
+    const url = `${base}/bills/${parsed.congress}/${parsed.billTypeLower}/${parsed.number}`;
+    return { md: `* [${billId}](${url})` };
+  }
+}
+
 /**
- * Build a rich markdown string from a ChangelogEntry.
- * Pure function — no side effects.
+ * Build PR / GitHub Actions step-summary markdown from a {@link ChangelogEntry}.
+ *
+ * Resolves display strings from `{dataDir}/legislators/{id}.json` and bill paths under `{dataDir}/bills/`.
+ * Removed legislators render as plain text (no link). Long updated lists are truncated with an overflow line.
+ *
+ * @param entry - ID-only changelog payload.
+ * @param opts - `dataDir` required; optional `fsModule` and `siteBaseUrl` (default `https://votedfor.us`).
  */
-export function buildMarkdown(entry: ChangelogEntry): string {
+export function buildMarkdown(entry: ChangelogEntry, opts: BuildMarkdownOptions): string {
   const { legislators, bills } = entry;
   const lines: string[] = [`## Congressional Data Update — ${entry.date}`, ''];
 
   if (legislators.added.length > 0) {
     lines.push(`### New Legislators (${legislators.added.length})`);
-    for (const l of legislators.added) {
-      lines.push(`* [${l.nameTitle}](${l.url})`);
+    for (const id of legislators.added) {
+      lines.push(readLegislatorLine(id, opts).md);
     }
     lines.push('');
   }
 
   if (legislators.updated.length > 0) {
     lines.push(`### Updated Legislators (${legislators.updated.length})`);
-    for (const l of legislators.updated.slice(0, LEGISLATOR_DISPLAY_LIMIT)) {
-      lines.push(`* [${l.nameTitle}](${l.url})`);
+    for (const id of legislators.updated.slice(0, LEGISLATOR_DISPLAY_LIMIT)) {
+      lines.push(readLegislatorLine(id, opts).md);
     }
     if (legislators.updated.length > LEGISLATOR_DISPLAY_LIMIT) {
       lines.push(`* *(and ${legislators.updated.length - LEGISLATOR_DISPLAY_LIMIT} more)*`);
@@ -399,40 +473,40 @@ export function buildMarkdown(entry: ChangelogEntry): string {
 
   if (legislators.removed.length > 0) {
     lines.push(`### Removed Legislators (${legislators.removed.length})`);
-    for (const l of legislators.removed) {
-      lines.push(`* ${l.nameTitle} (${l.bioguideId})`);
+    for (const id of legislators.removed) {
+      lines.push(removedLegislatorLine(id, opts));
     }
     lines.push('');
   }
 
   if (bills.newLaws.length > 0) {
     lines.push(`### Bills That Became Law (${bills.newLaws.length})`);
-    for (const b of bills.newLaws) {
-      lines.push(`* [${b.title}](${b.url})`);
+    for (const id of bills.newLaws) {
+      lines.push(readBillLine(id, opts).md);
     }
     lines.push('');
   }
 
   if (bills.withNewVotes.length > 0) {
     lines.push(`### Bills With New Votes (${bills.withNewVotes.length})`);
-    for (const b of bills.withNewVotes) {
-      lines.push(`* [${b.title}](${b.url})`);
+    for (const id of bills.withNewVotes) {
+      lines.push(readBillLine(id, opts).md);
     }
     lines.push('');
   }
 
   if (bills.added.length > 0) {
     lines.push(`### Newly Voted-on Bills (${bills.added.length})`);
-    for (const b of bills.added) {
-      lines.push(`* [${b.title}](${b.url})`);
+    for (const id of bills.added) {
+      lines.push(readBillLine(id, opts).md);
     }
     lines.push('');
   }
 
   if (bills.updated.length > 0) {
     lines.push(`### Updated Bills (${bills.updated.length})`);
-    for (const b of bills.updated.slice(0, BILL_DISPLAY_LIMIT)) {
-      lines.push(`* [${b.title}](${b.url})`);
+    for (const id of bills.updated.slice(0, BILL_DISPLAY_LIMIT)) {
+      lines.push(readBillLine(id, opts).md);
     }
     if (bills.updated.length > BILL_DISPLAY_LIMIT) {
       lines.push(`* *(and ${bills.updated.length - BILL_DISPLAY_LIMIT} more)*`);
@@ -456,8 +530,27 @@ export function buildMarkdown(entry: ChangelogEntry): string {
   return lines.join('\n');
 }
 
+/** Markdown bullet for a removed legislator: label from file if present, else id only. */
+function removedLegislatorLine(bioguideId: string, opts: BuildMarkdownOptions): string {
+  const fsModule = opts.fsModule ?? defaultFs;
+  const filePath = path.join(opts.dataDir, 'legislators', `${bioguideId}.json`);
+  try {
+    const raw = fsModule.readFileSync(filePath, 'utf8');
+    const data = safeParseJson<LegislatorJson>(raw);
+    const label = data ? computeNameTitle(data) : bioguideId;
+    return `* ${label} (${bioguideId})`;
+  } catch {
+    return `* ${bioguideId}`;
+  }
+}
+
 /**
- * Write the markdown string to prBodyPath, and optionally to GITHUB_STEP_SUMMARY.
+ * Write `prBodyPath` and optionally append the same markdown to the GitHub step summary file.
+ *
+ * @param markdown - Full PR / summary body.
+ * @param prBodyPath - Destination path (parent dirs created if needed).
+ * @param fsModule - Injectable `fs` (default `node:fs`).
+ * @param stepSummaryPath - `null` disables step summary; `undefined` uses `GITHUB_STEP_SUMMARY` when set.
  */
 export function writePrBody(
   markdown: string,
@@ -471,20 +564,17 @@ export function writePrBody(
   }
   fsModule.writeFileSync(prBodyPath, markdown, 'utf8');
 
-  // null = explicitly disabled; undefined = read from env
   const summaryPath = stepSummaryPath === null ? undefined : (stepSummaryPath ?? process.env['GITHUB_STEP_SUMMARY']);
   if (summaryPath) {
     fsModule.appendFileSync(summaryPath, markdown + '\n', 'utf8');
   }
 }
 
-// ===== MAIN ORCHESTRATOR =====
-
 /**
- * Generate a complete change summary: detect git changes, build structured entry,
- * write per-run JSON, update accumulated JSON, and write PR body markdown.
+ * End-to-end: git diff → {@link ChangelogEntry} → per-run JSON → optional accumulated JSON → PR body markdown.
  *
- * @returns The generated ChangelogEntry
+ * @param options - See {@link GenerateChangeSummaryOptions}. Omit `accumulatedPath` to skip legacy array file.
+ * @returns The in-memory entry (same shape as written to disk).
  */
 export function generateChangeSummary(options: GenerateChangeSummaryOptions = {}): ChangelogEntry {
   const cwd = options.cwd ?? process.cwd();
@@ -494,7 +584,6 @@ export function generateChangeSummary(options: GenerateChangeSummaryOptions = {}
   const dataDir = options.dataDir ?? path.join(cwd, 'data');
   const dataPrefix = path.relative(cwd, dataDir).replace(/\\/g, '/') || 'data';
   const changelogDir = options.changelogDir ?? path.join(dataDir, 'changelog');
-  const accumulatedPath = options.accumulatedPath ?? path.join(dataDir, 'changelog.json');
   const prBodyPath = options.prBodyPath ?? path.join(cwd, '.github', 'pr-body.md');
   const runId = options.runId ?? process.env['GITHUB_RUN_ID'] ?? String(Date.now());
   const today = options.today ?? new Date().toISOString().split('T')[0]!;
@@ -518,10 +607,12 @@ export function generateChangeSummary(options: GenerateChangeSummaryOptions = {}
   const writtenPath = writeChangelogEntry(entry, changelogDir, fsModule);
   console.log(`Written: ${writtenPath}`);
 
-  updateAccumulatedChangelog(entry, accumulatedPath, fsModule);
-  console.log(`Updated: ${accumulatedPath}`);
+  if (options.accumulatedPath !== undefined && options.accumulatedPath !== '') {
+    updateAccumulatedChangelog(entry, options.accumulatedPath, fsModule);
+    console.log(`Updated: ${options.accumulatedPath}`);
+  }
 
-  const markdown = buildMarkdown(entry);
+  const markdown = buildMarkdown(entry, { fsModule, dataDir, siteBaseUrl });
   writePrBody(markdown, prBodyPath, fsModule, options.stepSummaryPath);
   console.log(`Written: ${prBodyPath}`);
 

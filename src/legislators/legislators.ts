@@ -382,16 +382,20 @@ export class Legislators extends AbstractCongressApi {
 
   /**
    * Get a legislator by bioguide ID with all merged data.
-   * Fetches from Congress.gov API when updateDate indicates the cache is stale,
-   * reads from cache when it is fresh, or skips the API entirely for YAML-only members.
+   * Fetches from Congress.gov when the member list signals a row change (or cache is missing),
+   * reads from cache when the list row is unchanged, or skips the API for YAML-only members.
    *
    * @param bioguideId - The member's bioguide ID
-   * @param updateDate - updateDate string from the member list API.
-   *   Pass `null` to skip all API calls (member is absent from the congress list — YAML-only).
-   *   Pass `undefined` to always fetch from the API (no prior update date known).
-   *   Pass a string to compare against the cached updateDate — only fetches if changed.
+   * @param fetchHint -
+   *   - `null` — skip member API (YAML-only / not on congress list).
+   *   - `undefined` — no congress list context (e.g. list fetch failed); always refresh cache path.
+   *   - `{ listRowChanged: true }` — refetch detail (or fill missing cache).
+   *   - `{ listRowChanged: false }` — use disk cache if present; fetch only if cache missing.
    */
-  async getLegislator(bioguideId: string, updateDate?: string | null): Promise<Legislator | undefined> {
+  async getLegislator(
+    bioguideId: string,
+    fetchHint?: null | undefined | { listRowChanged: boolean },
+  ): Promise<Legislator | undefined> {
     await this.ensureInitialized();
 
     const rawLegislator = this.legislatorsMap.get(bioguideId);
@@ -402,9 +406,9 @@ export class Legislators extends AbstractCongressApi {
 
     let memberInfo: MemberInfo | undefined;
 
-    if (updateDate !== null) {
+    if (fetchHint !== null) {
       const cacheFilePath = path.join(this.getCacheDir(), 'member', `${bioguideId}.json`);
-      const needsFetch = this.memberNeedsFetch(cacheFilePath, updateDate);
+      const needsFetch = this.memberNeedsFetch(cacheFilePath, fetchHint);
 
       if (needsFetch) {
         try {
@@ -443,17 +447,15 @@ export class Legislators extends AbstractCongressApi {
   }
 
   /**
-   * Returns true if the member detail cache is absent or its stored updateDate differs
-   * from the one returned by the member list API.
+   * Whether to call the member detail API. Driven by list-row change (not list updateDate vs cached detail).
    */
-  private memberNeedsFetch(cacheFilePath: string, updateDate: string | undefined): boolean {
-    if (!updateDate) return true;
-    try {
-      const cached = JSON.parse(fs.readFileSync(cacheFilePath, 'utf8')) as MemberResponse;
-      return cached.member?.updateDate !== updateDate;
-    } catch {
-      return true;
-    }
+  private memberNeedsFetch(
+    cacheFilePath: string,
+    fetchHint: undefined | { listRowChanged: boolean },
+  ): boolean {
+    if (fetchHint === undefined) return true;
+    if (fetchHint.listRowChanged) return true;
+    return !fs.existsSync(cacheFilePath);
   }
 
   /**
@@ -615,13 +617,15 @@ export class Legislators extends AbstractCongressApi {
       const currentUpdateDate = currentUpdateDates.get(bioguideId);
       const previousUpdateDate = previousUpdateDates.get(bioguideId);
 
-      // String equality comparison — same pattern as getBillsWithVotes.previousUpdateDates
-      // undefined currentUpdateDate means member list fetch failed; treat as changed.
-      const updateDate: string | null | undefined = currentUpdateDates.size > 0
-        ? (currentUpdateDate !== undefined ? currentUpdateDate : null)
-        : undefined;
+      const fetchHint: null | undefined | { listRowChanged: boolean } =
+        currentUpdateDates.size > 0
+          ? {
+              listRowChanged:
+                previousUpdateDate === undefined || previousUpdateDate !== currentUpdateDate,
+            }
+          : undefined;
 
-      if (updateDate !== null) {
+      if (currentUpdateDates.size > 0 && currentUpdateDate !== undefined) {
         if (previousUpdateDate === undefined || previousUpdateDate !== currentUpdateDate) {
           fetchedCount++;
         } else {
@@ -629,7 +633,7 @@ export class Legislators extends AbstractCongressApi {
         }
       }
 
-      const legislator = await this.getLegislator(bioguideId, updateDate);
+      const legislator = await this.getLegislator(bioguideId, fetchHint);
       if (legislator) {
         results.push(legislator);
       }

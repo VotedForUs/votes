@@ -353,7 +353,7 @@ program
   .description('Generate a structured changelog entry and PR body markdown from data/ git changes')
   .option('--data-dir <path>', 'Path to the data/ directory (default: {cwd}/data)')
   .option('--changelog-dir <path>', 'Path to the changelog directory (default: {dataDir}/changelog)')
-  .option('--accumulated-path <path>', 'Path to the accumulated changelog.json (default: {dataDir}/changelog.json)')
+  .option('--accumulated-path <path>', 'Optional path to legacy accumulated changelog array JSON (omit to skip)')
   .option('--pr-body <path>', 'Path to write the PR body markdown (default: {cwd}/.github/pr-body.md)')
   .option('--run-id <string>', 'Run ID string (default: GITHUB_RUN_ID env var or timestamp)')
   .option('--site-base-url <url>', 'Base URL for building links (default: https://votedfor.us)')

@@ -42,6 +42,37 @@ export interface GetLegislatorsOptions {
   imagesDir?: string;
 }
 
+/** Strip `updateDate` recursively so we can detect no-op API refreshes. */
+export function legislatorJsonWithoutUpdateDates(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(legislatorJsonWithoutUpdateDates);
+  if (value && typeof value === 'object') {
+    const o = value as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(o)) {
+      if (k === 'updateDate') continue;
+      out[k] = legislatorJsonWithoutUpdateDates(v);
+    }
+    return out;
+  }
+  return value;
+}
+
+function shouldSkipIdenticalLegislatorFile(
+  filePath: string,
+  nextJson: string,
+  fsModule: typeof fs,
+): boolean {
+  if (!fsModule.existsSync(filePath)) return false;
+  try {
+    const prev = fsModule.readFileSync(filePath, 'utf8');
+    const a = legislatorJsonWithoutUpdateDates(JSON.parse(prev));
+    const b = legislatorJsonWithoutUpdateDates(JSON.parse(nextJson));
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
+
 type HttpGetFn = (url: string, callback: (res: any) => void) => { on: (event: string, cb: (...args: any[]) => void) => void };
 
 /**
@@ -170,7 +201,9 @@ export async function getLegislators(
     const bioguideId = (leg as Legislator).bioguideId ?? (leg as LegislatorSmall).bioguide;
     if (!bioguideId) continue;
     const filePath = path.join(finalOutputDir, `${bioguideId}.json`);
-    fsModule.writeFileSync(filePath, JSON.stringify(leg, null, 2), 'utf8');
+    const nextJson = JSON.stringify(leg, null, 2);
+    if (shouldSkipIdenticalLegislatorFile(filePath, nextJson, fsModule)) continue;
+    fsModule.writeFileSync(filePath, nextJson, 'utf8');
   }
   console.log(`Successfully wrote ${allLegislators.length} legislators to ${finalOutputDir}`);
 }
@@ -218,7 +251,11 @@ export function buildLegislatorsFromCache(options: BuildLegislatorsFromCacheOpti
     const bioguideId = (leg as Legislator).bioguideId ?? (leg as LegislatorSmall).bioguide;
     if (!bioguideId) continue;
     const out = small ? reduceLegislator(leg as Legislator) : leg;
-    fsModule.writeFileSync(path.join(outputDir, `${bioguideId}.json`), JSON.stringify(out, null, 2), 'utf8');
+    const filePath = path.join(outputDir, `${bioguideId}.json`);
+    const nextJson = JSON.stringify(out, null, 2);
+    if (!shouldSkipIdenticalLegislatorFile(filePath, nextJson, fsModule)) {
+      fsModule.writeFileSync(filePath, nextJson, 'utf8');
+    }
     count++;
   }
   return count;
