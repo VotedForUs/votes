@@ -163,7 +163,9 @@ export async function getLegislators(
     console.log(`Images directory: ${imagesDir}`);
   }
   const legislators = new LegislatorsClass();
-  const rawLegislators: Legislator[] = await legislators.getAllLegislators(congress);
+  const rawLegislators: Legislator[] = await legislators.getAllLegislators(congress, {
+    legislatorDataDir: finalOutputDir,
+  });
   console.log(`Fetched ${rawLegislators.length} legislators`);
 
   if (imagesDir && !fsModule.existsSync(imagesDir)) {

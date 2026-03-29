@@ -991,9 +991,15 @@ export class CongressApi extends Legislators {
    * 
    * Note: When a bill has votes, ALL actions are returned (not just actions with votes),
    * but only actions with recorded votes will have vote details populated.
-   * 
+   *
+   * **Source of truth for incrementals** is the **last Congress.gov bill list** cached under
+   * `.cache/congress` (run-to-run), not committed `main` JSON. Optional `ensureOutputCoverage`
+   * unions in any list bill whose output file is **missing** under `{outputDir}/bills/{term}/{type}/`
+   * so a PR that never merged does not leave gaps on disk.
+   *
    * @param billType - Bill type to filter (e.g., "HR", "S")
    * @param params - Optional pagination parameters
+   * @param options - Optional `ensureOutputCoverage` to backfill missing JSON files on disk
    * @returns Promise resolving to array of bills with recorded votes (includes all actions)
    */
   async getBillsWithVotes(
@@ -1003,16 +1009,19 @@ export class CongressApi extends Legislators {
       limit?: number;
       fromDateTime?: string;
       toDateTime?: string;
-    }
+    },
+    options?: {
+      /** When set, every bill on the fresh API list without a matching `.json` here is also processed */
+      ensureOutputCoverage?: { outputDir: string; term: number };
+    },
   ): Promise<BillWithActions[]> {
     await this.ensureInitialized();
 
     try {
-      // Step 1: Read ALL cached bill list pages to get previous updateDates (for incremental updates)
-      // This reads all cached pages to ensure we have updateDates for all previously fetched bills
+      // Step 1: Read ALL cached bill list pages to get previous updateDates (API cache = prior run)
       const cachedBills = this.readAllCachedBillLists(billType);
       const previousUpdateDates = cachedBills ? this.getBillUpdateDates(cachedBills) : null;
-      
+
       if (cachedBills) {
         console.log(`Reading cached bill list...`);
         console.log(`Found ${cachedBills.length} bills in previous cache (all pages)`);
@@ -1035,6 +1044,25 @@ export class CongressApi extends Legislators {
       } else {
         billsToProcess = allBills;
         console.log(`Found ${allBills.length} bills (no previous cache)`);
+      }
+
+      const cov = options?.ensureOutputCoverage;
+      if (cov) {
+        const typeLower = billType.toLowerCase();
+        const billRoot = path.join(cov.outputDir, "bills", String(cov.term), typeLower);
+        const missingOnDisk = allBills.filter(
+          (b) => !this.fsModule.existsSync(path.join(billRoot, `${b.number}.json`)),
+        );
+        if (missingOnDisk.length > 0) {
+          const byNumber = new Map(billsToProcess.map((b) => [b.number, b]));
+          for (const b of missingOnDisk) {
+            byNumber.set(b.number, b);
+          }
+          billsToProcess = Array.from(byNumber.values());
+          console.log(
+            `ensureOutputCoverage: added ${missingOnDisk.length} bills missing under ${billRoot}`,
+          );
+        }
       }
 
       if (billsToProcess.length === 0) {

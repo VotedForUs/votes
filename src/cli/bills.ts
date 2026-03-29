@@ -8,6 +8,7 @@ import { CongressApi, computeBillDateFields, shouldKeepAction } from "../congres
 import type { BillWithActions, BillActionWithVotes } from "../congress/congress-api.types.js";
 import type { BillSmall, WriteVotedBillsResult, WriteVotedBillsOptions, BuildFromCacheOptions, BuildFromCacheResult, FetchOneBillOptions, FetchOneBillResult } from "./bills.types.js";
 import { BILL_TYPES, type BillType } from "../api-congress-gov/abstract-api.types.js";
+
 /**
  * Reduce a bill to a smaller subset of properties
  * @param bill - Full bill with actions
@@ -116,6 +117,7 @@ export async function getBills(
  * @param small - Whether to reduce bill data to small format (defaults to true)
  * @param limit - Optional limit on number of bills to return
  * @param CongressApiClass - Optional CongressApi class (for testing)
+ * @param ensureOutputCoverage - When set, bills on the API list with no JSON under `{outputDir}/bills/{term}/{type}/` are fetched too (backfill after skipped merges)
  * @returns Array of bills with recorded votes
  */
 export async function getVotedBills(
@@ -124,6 +126,7 @@ export async function getVotedBills(
   small: boolean = true,
   limit?: number,
   CongressApiClass: typeof CongressApi = CongressApi,
+  ensureOutputCoverage?: { outputDir: string; term: number },
 ): Promise<BillWithActions[] | BillSmall[]> {
   
   console.log(`Getting bills with recorded votes...`);
@@ -136,9 +139,15 @@ export async function getVotedBills(
   
   // Instantiate CongressApi class
   const congressApi = new CongressApiClass(term);
-  
+
+  const voteOpts = ensureOutputCoverage ? { ensureOutputCoverage } : undefined;
+
   // Fetch bills with votes using optimized method
-  let billsData = await congressApi.getBillsWithVotes(billType, limit ? { limit } : undefined);
+  let billsData = await congressApi.getBillsWithVotes(
+    billType,
+    limit ? { limit } : undefined,
+    voteOpts,
+  );
   
   // Apply limit if specified (getBillsWithVotes may return more due to pagination)
   if (limit && billsData.length > limit) {
@@ -180,8 +189,14 @@ export async function writeVotedBills(
   } = options;
 
   try {
-    // Fetch bills with votes
-    const bills = await getVotedBills(term, billType, small, limit, CongressApiClass);
+    const bills = await getVotedBills(
+      term,
+      billType,
+      small,
+      limit,
+      CongressApiClass,
+      { outputDir, term },
+    );
     
     // Create output directory for this bill type: {outputDir}/bills/{congress}/{billType}/
     const billsCongressDir = path.join(outputDir, 'bills', String(term), billType.toLowerCase());

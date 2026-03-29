@@ -50,7 +50,10 @@ export class MockLegislators {
   /**
    * Mock implementation of getAllLegislators
    */
-  async getAllLegislators(): Promise<Legislator[]> {
+  async getAllLegislators(
+    _congress?: number,
+    _options?: { legislatorDataDir?: string },
+  ): Promise<Legislator[]> {
     if (MockLegislators.shouldThrowError) {
       throw new Error(MockLegislators.errorMessage);
     }

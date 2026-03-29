@@ -567,11 +567,18 @@ export class Legislators extends AbstractCongressApi {
    * whether to fetch individual detail pages or read from cache.
    *
    * @param congress - The congressional term to fetch (defaults to this.congressionalTerm)
+   * @param options - When `legislatorDataDir` is set, members without `{bioguide}.json` there are
+   *   always refetched (backfill). Incremental `updateDate` comparison uses the API cache sidecar only
+   *   (Congress.gov vs prior run), not committed JSON.
    */
-  async getAllLegislators(congress?: number): Promise<Legislator[]> {
+  async getAllLegislators(
+    congress?: number,
+    options?: { legislatorDataDir?: string },
+  ): Promise<Legislator[]> {
     await this.ensureInitialized();
 
     const term = congress ?? this.congressionalTerm;
+    const legislatorDataDir = options?.legislatorDataDir;
     const previousUpdateDates = this.readMemberUpdateDatesCache(term);
 
     // Fetch the current member list for this congress to get fresh updateDates
@@ -616,17 +623,21 @@ export class Legislators extends AbstractCongressApi {
     for (const bioguideId of bioguideIdsToProcess) {
       const currentUpdateDate = currentUpdateDates.get(bioguideId);
       const previousUpdateDate = previousUpdateDates.get(bioguideId);
+      const missingOnDisk =
+        !!legislatorDataDir &&
+        !fs.existsSync(path.join(legislatorDataDir, `${bioguideId}.json`));
+
+      let listRowChanged =
+        previousUpdateDate === undefined || previousUpdateDate !== currentUpdateDate;
+      if (missingOnDisk) {
+        listRowChanged = true;
+      }
 
       const fetchHint: null | undefined | { listRowChanged: boolean } =
-        currentUpdateDates.size > 0
-          ? {
-              listRowChanged:
-                previousUpdateDate === undefined || previousUpdateDate !== currentUpdateDate,
-            }
-          : undefined;
+        currentUpdateDates.size > 0 ? { listRowChanged } : undefined;
 
       if (currentUpdateDates.size > 0 && currentUpdateDate !== undefined) {
-        if (previousUpdateDate === undefined || previousUpdateDate !== currentUpdateDate) {
+        if (listRowChanged) {
           fetchedCount++;
         } else {
           cachedCount++;

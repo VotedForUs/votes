@@ -153,7 +153,8 @@ export class MockCongressApi {
       limit?: number;
       fromDateTime?: string;
       toDateTime?: string;
-    }
+    },
+    _options?: { ensureOutputCoverage?: { outputDir: string; term: number } },
   ): Promise<BillWithActions[]> {
     this.apiCallCount++;
     
