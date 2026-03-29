@@ -1,2 +1,3 @@
 /** @type {import('semantic-release').GlobalConfig} */
-export default { extends: '@votedforus/common' };
+// GitHub-only preset is `@votedforus/common`; npm packages need `/npm` for @semantic-release/npm.
+export default { extends: '@votedforus/common/npm' };
