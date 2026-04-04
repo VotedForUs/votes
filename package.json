@@ -25,7 +25,7 @@
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
-    "build:typesfile": "tsc src/types.ts -d --emitDeclarationOnly --module amd --outFile ./dist/types.bundle.d.ts --skipLibCheck --moduleResolution node && tsx src/cli/index.ts types --input ./dist/types.bundle.d.ts --output ./dist/types.bundle.d.ts",
+    "build:typesfile": "tsc --ignoreConfig --ignoreDeprecations 6.0 src/types.ts -d --emitDeclarationOnly --module amd --outFile ./dist/types.bundle.d.ts --skipLibCheck --moduleResolution node10 && tsx src/cli/index.ts types --input ./dist/types.bundle.d.ts --output ./dist/types.bundle.d.ts",
     "build:typesfile:process": "tsx src/cli/index.ts types --input ./dist/types.bundle.d.ts --output ./dist/types.bundle.d.ts",
     "build:schema": "ts-to-zod --skipValidation",
     "bills:generate": "tsx src/cli/index.ts bills",
