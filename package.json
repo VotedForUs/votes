@@ -1,6 +1,6 @@
 {
   "name": "@votedforus/votes",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "description": "TypeScript library and CLI for fetching and analyzing U.S. Congressional floor votes from House and Senate via Congress.gov API",
   "type": "module",
   "main": "./dist/index.js",
