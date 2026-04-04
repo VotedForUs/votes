@@ -10,6 +10,9 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # setup-node writes .npmrc using ${NODE_AUTH_TOKEN}; it must be set for every step that runs npm (including semantic-release → npm publish).
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
     permissions:
       contents: write
       issues: write
@@ -30,8 +33,6 @@ jobs:
           scope: '@votedforus'
 
       - run: npm ci
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
 
       - name: Build TypeScript
         run: npm run build
