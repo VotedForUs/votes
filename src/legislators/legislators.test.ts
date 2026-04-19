@@ -707,6 +707,45 @@ describe("Legislators", () => {
       assert.ok(result.find((r) => r.bioguideId === "A000001"));
     });
 
+    test("should bypass cached member list and pick up new members (forceRefresh)", async () => {
+      MockYamlUtils.setMockData(LEGISLATORS_CURRENT_URL, mockLegislatorsData);
+      MockYamlUtils.setMockData(LEGISLATORS_SOCIAL_URL, mockSocialMediaData);
+      MockXmlUtils.setMockData(SENATE_MEMBERS_URL, mockSenateMembersData);
+      await legislators.initialize();
+
+      // Pre-populate the API cache file with a stale member list (only A000001)
+      const cacheDir = (legislators as any).apiConfig.cacheDir;
+      const memberCacheDir = `${cacheDir}/member/congress`;
+      const staleResponse = {
+        members: [
+          { bioguideId: "A000001", updateDate: "2024-01-01", name: "Alex Anderson", partyName: "Republican", state: "CA", terms: [], url: "" },
+        ],
+        pagination: { count: 1 },
+        request: { contentType: "application/json", format: "json" },
+      };
+      const { mkdirSync, writeFileSync } = await import("node:fs");
+      mkdirSync(memberCacheDir, { recursive: true });
+      writeFileSync(
+        `${memberCacheDir}/119_limit-250_offset-0.json`,
+        JSON.stringify(staleResponse),
+      );
+
+      // Live API returns both A000001 and B000002 (the "new" member)
+      const freshResponse = {
+        members: [
+          { bioguideId: "A000001", updateDate: "2024-01-01", name: "Alex Anderson", partyName: "Republican", state: "CA", terms: [], url: "" },
+          { bioguideId: "B000002", updateDate: "2024-06-01", name: "Blake Brown", partyName: "Democrat", state: "CA", terms: [], url: "" },
+        ],
+        pagination: { count: 2 },
+        request: { contentType: "application/json", format: "json" },
+      };
+      fetchMock.get("begin:https://api.congress.gov/v3/member/congress/119", freshResponse);
+
+      const result = await legislators.getAllLegislators(119);
+      assert.strictEqual(result.length, 2, "should include the new member despite stale cache");
+      assert.ok(result.find((r) => r.bioguideId === "B000002"), "new member B000002 must be present");
+    });
+
     test("should handle paginated congress member list", async () => {
       MockYamlUtils.setMockData(LEGISLATORS_CURRENT_URL, mockLegislatorsData);
       MockYamlUtils.setMockData(LEGISLATORS_SOCIAL_URL, mockSocialMediaData);

@@ -129,11 +129,19 @@ export abstract class AbstractCongressApi {
    * Makes a cached API call to Congress.gov with authentication and standard parameters
    * @param endpoint - The API endpoint (without base URL)
    * @param params - Optional query parameters for the API call
+   * @param configOverrides - Optional per-call overrides for cache behaviour (e.g. `{ forceRefresh: true }`)
    * @returns Promise resolving to the parsed JSON response
    */
-  protected async makeCongressApiCall<T>(endpoint: string, params?: Record<string, any>): Promise<T> {
+  protected async makeCongressApiCall<T>(
+    endpoint: string,
+    params?: Record<string, any>,
+    configOverrides?: Partial<CachedApiCallConfig>,
+  ): Promise<T> {
     this.apiCallCount++;
-    return makeCachedApiCall<T>(endpoint, this.apiConfig, params, this.fetchFunction);
+    const config = configOverrides
+      ? { ...this.apiConfig, ...configOverrides }
+      : this.apiConfig;
+    return makeCachedApiCall<T>(endpoint, config, params, this.fetchFunction);
   }
 
   /**
@@ -419,16 +427,21 @@ export abstract class AbstractCongressApi {
   }
 
   /**
-   * Fetches members of a specific congress term
+   * Fetches members of a specific congress term.
    * Uses /member/congress/{congress} which scopes the list to that term only,
    * eliminating the need for date-range filtering on the YAML data.
+   *
+   * @param congress - Congressional term number
+   * @param params - Pagination parameters
+   * @param configOverrides - Per-call cache config overrides (e.g. `{ forceRefresh: true }`)
    */
   protected async fetchMembersByCongress(
     congress: number,
     params?: { offset?: number; limit?: number },
+    configOverrides?: Partial<CachedApiCallConfig>,
   ): Promise<MemberListResponse> {
     const endpoint = `/member/congress/${congress}`;
-    return this.makeCongressApiCall<MemberListResponse>(endpoint, params);
+    return this.makeCongressApiCall<MemberListResponse>(endpoint, params, configOverrides);
   }
 
   /**

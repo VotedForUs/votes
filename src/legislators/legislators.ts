@@ -566,6 +566,11 @@ export class Legislators extends AbstractCongressApi {
    * then compares updateDate strings (like getBillsWithVotes) to decide
    * whether to fetch individual detail pages or read from cache.
    *
+   * The member **list** is always fetched with `forceRefresh: true` so that
+   * newly seated members (special elections, appointments) appear even when
+   * a prior run's cached list exists on disk. Individual member detail pages
+   * still use normal cache semantics (fetch only when `updateDate` changes).
+   *
    * @param congress - The congressional term to fetch (defaults to this.congressionalTerm)
    * @param options - When `legislatorDataDir` is set, members without `{bioguide}.json` there are
    *   always refetched (backfill). Incremental `updateDate` comparison uses the API cache sidecar only
@@ -591,7 +596,7 @@ export class Legislators extends AbstractCongressApi {
       let hasMore = true;
 
       while (hasMore) {
-        const response = await this.fetchMembersByCongress(term, { offset, limit });
+        const response = await this.fetchMembersByCongress(term, { offset, limit }, { forceRefresh: true });
         response.members.forEach((member) => {
           currentUpdateDates.set(member.bioguideId, member.updateDate);
         });
