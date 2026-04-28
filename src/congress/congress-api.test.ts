@@ -1653,6 +1653,40 @@ describe("CongressApi", () => {
       assert.strictEqual(result, false);
     });
 
+    test("hasRecordedVotes should return true for House passage by unanimous consent / without objection", async () => {
+      const action = {
+        actionCode: "H37100",
+        actionDate: "2026-04-17",
+        text: "On passage Passed without objection. (text: CR H2955)",
+        sourceSystem: { code: 2, name: "House floor actions" },
+        type: "Floor",
+      };
+      const result = (congressApi as any).hasRecordedVotes(action);
+      assert.strictEqual(result, true);
+    });
+
+    test("hasRecordedVotes should return false for non-passage House 'without objection' floor actions", async () => {
+      const action = {
+        actionDate: "2026-04-17",
+        text: "Motion to reconsider laid on the table Agreed to without objection.",
+        sourceSystem: { code: 2, name: "House floor actions" },
+        type: "Floor",
+      };
+      const result = (congressApi as any).hasRecordedVotes(action);
+      assert.strictEqual(result, false);
+    });
+
+    test("hasRecordedVotes should return false for Senate 'without objection' (must be House)", async () => {
+      const action = {
+        actionDate: "2026-04-17",
+        text: "On passage Passed without objection.",
+        sourceSystem: { name: "Senate" },
+        type: "Floor",
+      };
+      const result = (congressApi as any).hasRecordedVotes(action);
+      assert.strictEqual(result, false);
+    });
+
     test("preFilterBillsByLatestAction should filter committee referral bills", async () => {
       const bills = [
         { number: "1", latestAction: { text: "Passed House" } },
@@ -2079,6 +2113,65 @@ describe("CongressApi", () => {
       });
       assert.strictEqual(result.length, 1);
       assert.strictEqual(result[0].recordedVotes![0].result, "rejected");
+    });
+
+    test("should populate House passage by unanimous consent with UC for each representative", async () => {
+      const ucAction = {
+        actionCode: "H37100",
+        actionDate: "2024-06-15",
+        text: "On passage Passed without objection. (text: CR H2955)",
+        sourceSystem: { code: 2, name: "House floor actions" },
+        type: "Floor",
+      };
+      const actions = [ucAction];
+      const result = await congressApi.populateRecordedVotes(actions as any, {
+        congress: 119,
+        billType: "HR",
+        billNumber: "8322",
+      });
+      assert.strictEqual(result.length, 1);
+      assert.ok(result[0].recordedVotes);
+      assert.strictEqual(result[0].recordedVotes!.length, 1);
+      const rv = result[0].recordedVotes![0];
+      assert.strictEqual(rv.chamber, "House");
+      assert.strictEqual(rv.result, "passed");
+      assert.strictEqual(rv.question, "Pass with Unanimous Consent");
+      assert.strictEqual(rv.rollNumber, 0);
+      assert.ok(rv.votes, "votes map should be populated");
+      const voteValues = Object.values(rv.votes!);
+      assert.ok(voteValues.length > 0, "should have at least one rep with vote");
+      assert.ok(voteValues.every((v) => v === "UC"), "all reps should be marked UC");
+      // House UC should not produce senateCount
+      assert.strictEqual((rv as any).senateCount, undefined);
+      assert.ok(Array.isArray(rv.votePartyTotal));
+    });
+
+    test("should not synthesize House UC when actual recordedVotes exist on the action", async () => {
+      const action = {
+        actionCode: "H37100",
+        actionDate: "2026-04-17",
+        text: "On passage Passed by recorded vote: 220 - 200.",
+        sourceSystem: { code: 2, name: "House floor actions" },
+        type: "Floor",
+        recordedVotes: [
+          {
+            chamber: "House",
+            congress: 119,
+            date: "2026-04-17T12:00:00Z",
+            rollNumber: 200,
+            sessionNumber: 1,
+            url: "https://clerk.house.gov/evs/2026/roll200.xml",
+          },
+        ],
+      };
+      const result = await congressApi.populateRecordedVotes([action] as any, {
+        congress: 119,
+        billType: "HR",
+        billNumber: "1",
+      });
+      // Should keep the original recordedVote, not replace it with a synthetic UC vote
+      assert.strictEqual(result[0].recordedVotes!.length, 1);
+      assert.strictEqual(result[0].recordedVotes![0].rollNumber, 200);
     });
   });
 });

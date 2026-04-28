@@ -151,6 +151,24 @@ export class CongressApi extends Legislators {
     return hasUnanimousConsent && !!hasSenatePass;
   }
 
+  /**
+   * Returns true if the action text indicates a House passage by unanimous consent / without objection.
+   * Such actions have no roll call but are treated as recorded votes with all representatives as UC.
+   * Matches House Floor passage actions like "On passage Passed without objection".
+   * Excludes non-passage "without objection" floor actions (e.g. "Motion to reconsider laid on the table").
+   */
+  private isHouseUnanimousConsentPass(action: BillAction): boolean {
+    if (!shouldKeepAction(action) || !action.text) return false;
+    const sourceName = (action.sourceSystem?.name ?? "").toLowerCase();
+    if (!sourceName.startsWith("house")) return false;
+    if ((action.type ?? "").toLowerCase() !== "floor") return false;
+    const t = action.text.toLowerCase();
+    if (!t.includes("without objection")) return false;
+    const isPassage = /\bon passage\b/.test(t);
+    if (!isPassage) return false;
+    return t.includes("passed") || t.includes("agreed");
+  }
+
   /** Phrases that indicate a voice vote was superseded by a demand for a recorded vote (exclude these). */
   private static readonly VOICE_VOTE_DEMANDED_PHRASES = [
     "demanded the yeas and nays",
@@ -199,6 +217,7 @@ export class CongressApi extends Legislators {
   private hasRecordedVotes(action: BillAction): boolean {
     if (!shouldKeepAction(action)) return false;
     if (this.isSenateUnanimousConsentPass(action)) return true;
+    if (this.isHouseUnanimousConsentPass(action)) return true;
     if (this.isVoiceVoteChamberVote(action)) return true;
     return Array.isArray(action.recordedVotes) && action.recordedVotes.length > 0;
   }
@@ -410,20 +429,27 @@ export class CongressApi extends Legislators {
   }
 
   /**
-   * Build SenateVoteData for a Senate unanimous consent pass (no roll call).
-   * Uses current senators with vote 'UC', result from action.text, and synthetic counts as if all 100 voted Yea.
-   * Uses raw legislator data only (getSenateBioguideIdsWithParty) so build-from-cache never calls getLegislator/API.
+   * Build vote data for a chamber pass by unanimous consent / without objection (no roll call).
+   * Uses current chamber members with vote 'UC' and synthetic counts as if all members voted Yea.
+   * Uses raw legislator data only so build-from-cache never calls getLegislator/API.
+   * @param action - The chamber Floor action representing the UC pass
+   * @param params - Bill identification used to build the canonical voteUrl
+   * @param chamber - Which chamber the UC pass is from
+   * @returns SenateVoteData for Senate; HouseVoteData for House
    */
-  private async buildSenateUnanimousConsentVoteData(
+  private async buildUnanimousConsentVoteData(
     action: BillAction,
-    params: PopulateRecordedVotesParams
-  ): Promise<SenateVoteData> {
+    params: PopulateRecordedVotesParams,
+    chamber: "Senate" | "House"
+  ): Promise<SenateVoteData | HouseVoteData> {
     await this.ensureInitialized();
     const asOfDate = action.actionDate ?? new Date().toISOString().slice(0, 10);
-    const senators = this.getSenateBioguideIdsWithParty(asOfDate);
+    const members = chamber === "Senate"
+      ? this.getSenateBioguideIdsWithParty(asOfDate)
+      : this.getHouseBioguideIdsWithParty(asOfDate);
     const votes: ChamberVote = {};
     const byParty = new Map<string, { yea: number; nay: number; present: number; notVoting: number }>();
-    for (const { bioguideId, party } of senators) {
+    for (const { bioguideId, party } of members) {
       votes[bioguideId] = "UC";
       const voteParty = this.normalizeVoteParty(party);
       if (!byParty.has(voteParty)) byParty.set(voteParty, { yea: 0, nay: 0, present: 0, notVoting: 0 });
@@ -439,14 +465,26 @@ export class CongressApi extends Legislators {
       })
     );
     const voteUrl = `https://www.congress.gov/bill/${params.congress}th-congress/${params.billType.toLowerCase()}/${params.billNumber}`;
-    const n = senators.length;
+    const result = this.normalizeVoteResult("Passed by Unanimous Consent");
+    const question = "Pass with Unanimous Consent";
+
+    if (chamber === "Senate") {
+      const n = members.length;
+      return {
+        votes,
+        result,
+        senateCount: { yeas: n, nays: 0, present: 0, absent: 0 },
+        votePartyTotal,
+        voteUrl,
+        question,
+      };
+    }
     return {
       votes,
-      result: this.normalizeVoteResult("Passed by Unanimous Consent"),
-      senateCount: { yeas: n, nays: 0, present: 0, absent: 0 },
+      result,
       votePartyTotal,
       voteUrl,
-      question: "Pass with Unanimous Consent",
+      question,
     };
   }
 
@@ -632,36 +670,26 @@ export class CongressApi extends Legislators {
 
     const congress = params?.congress ?? this.congressionalTerm;
 
-    // Inject synthetic recorded votes for unanimous consent (Senate) and voice vote (House or Senate)
+    // Inject synthetic recorded votes for unanimous consent (House or Senate) and voice vote (House or Senate)
     if (params) {
+      const buildSyntheticRecordedVote = (chamber: "House" | "Senate", action: BillActionWithVotes): RecordedVoteWithVotes => ({
+        chamber,
+        congress,
+        date: action.actionDate,
+        rollNumber: 0,
+        sessionNumber: 0,
+        url: "",
+      } as RecordedVoteWithVotes);
       for (const action of filteredActions) {
-        if (this.isSenateUnanimousConsentPass(action) && (!action.recordedVotes || action.recordedVotes.length === 0)) {
-          (action as BillActionWithVotes).recordedVotes = [
-            {
-              chamber: "Senate",
-              congress,
-              date: action.actionDate,
-              rollNumber: 0,
-              sessionNumber: 0,
-              url: "",
-            } as RecordedVoteWithVotes,
-          ];
-        } else if (
-          this.isVoiceVoteChamberVote(action) &&
-          (!action.recordedVotes || action.recordedVotes.length === 0)
-        ) {
+        if (action.recordedVotes && action.recordedVotes.length > 0) continue;
+        if (this.isSenateUnanimousConsentPass(action)) {
+          action.recordedVotes = [buildSyntheticRecordedVote("Senate", action)];
+        } else if (this.isHouseUnanimousConsentPass(action)) {
+          action.recordedVotes = [buildSyntheticRecordedVote("House", action)];
+        } else if (this.isVoiceVoteChamberVote(action)) {
           const sourceName = (action.sourceSystem?.name ?? "").toLowerCase();
           const chamber = sourceName.startsWith("house") ? "House" : "Senate";
-          (action as BillActionWithVotes).recordedVotes = [
-            {
-              chamber,
-              congress,
-              date: action.actionDate,
-              rollNumber: 0,
-              sessionNumber: 0,
-              url: "",
-            } as RecordedVoteWithVotes,
-          ];
+          action.recordedVotes = [buildSyntheticRecordedVote(chamber, action)];
         }
       }
     }
@@ -675,10 +703,13 @@ export class CongressApi extends Legislators {
           allRecordedVotes.push({ action, vote: recordedVote });
 
           if (recordedVote.chamber.toLowerCase() === "house") {
+            const isUnanimousConsent = !recordedVote.url && params && this.isHouseUnanimousConsentPass(action);
             const isVoiceVote = !recordedVote.url && params && this.isVoiceVoteChamberVote(action);
-            const houseVoteData = isVoiceVote
-              ? (await this.buildVoiceVoteVoteData(action, params!)) as HouseVoteData
-              : await this.fetchHouseVotesForRecordedVote(recordedVote);
+            const houseVoteData = isUnanimousConsent
+              ? (await this.buildUnanimousConsentVoteData(action, params!, "House")) as HouseVoteData
+              : isVoiceVote
+                ? (await this.buildVoiceVoteVoteData(action, params!)) as HouseVoteData
+                : await this.fetchHouseVotesForRecordedVote(recordedVote);
             if (houseVoteData) {
               recordedVote.votes = houseVoteData.votes;
               recordedVote.result = houseVoteData.result;
@@ -691,7 +722,7 @@ export class CongressApi extends Legislators {
               !recordedVote.url && params && this.isSenateUnanimousConsentPass(action);
             const isVoiceVote = !recordedVote.url && params && this.isVoiceVoteChamberVote(action);
             const senateVoteData = isUnanimousConsent
-              ? await this.buildSenateUnanimousConsentVoteData(action, params)
+              ? (await this.buildUnanimousConsentVoteData(action, params, "Senate")) as SenateVoteData
               : isVoiceVote
                 ? (await this.buildVoiceVoteVoteData(action, params)) as SenateVoteData
                 : await this.fetchSenateVotesForRecordedVote(recordedVote);

@@ -224,7 +224,8 @@ export async function writeVotedBills(
 }
 
 /**
- * Check if an action has recorded votes (including Senate UC) — same logic as CongressApi.hasRecordedVotes
+ * Check if an action has recorded votes (including Senate UC and House UC) — mirrors CongressApi.hasRecordedVotes.
+ * Used by build-from-cache to detect cached actions whose votes will be synthesized later.
  */
 function actionHasRecordedVote(action: {
   sourceSystem?: { name?: string };
@@ -236,10 +237,21 @@ function actionHasRecordedVote(action: {
   if (Array.isArray(action.recordedVotes) && action.recordedVotes.length > 0) return true;
   if (!action.text) return false;
   const t = action.text.toLowerCase();
-  const hasUC = t.includes("without amendment by unanimous consent");
-  const hasSenatePass =
-    t.includes("passed senate") || (t.includes("passed") && action.sourceSystem?.name === "Senate");
-  return !!hasUC && !!hasSenatePass;
+  const isFloor = (action.type ?? "").toLowerCase() === "floor";
+  const sourceName = (action.sourceSystem?.name ?? "").toLowerCase();
+
+  const hasSenateUC =
+    t.includes("without amendment by unanimous consent") &&
+    (t.includes("passed senate") || (t.includes("passed") && action.sourceSystem?.name === "Senate"));
+  if (hasSenateUC) return true;
+
+  const hasHouseUC =
+    isFloor &&
+    sourceName.startsWith("house") &&
+    t.includes("without objection") &&
+    /\bon passage\b/.test(t) &&
+    (t.includes("passed") || t.includes("agreed"));
+  return hasHouseUC;
 }
 
 /**
