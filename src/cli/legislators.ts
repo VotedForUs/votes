@@ -9,6 +9,114 @@ import * as http from "http";
 import { Legislators } from "../legislators/legislators.js";
 import type { Legislator, LegislatorSmall } from "../legislators/legislators.types.js";
 
+/** Site-relative URL prefix written into legislator JSON `imageUrl` / `depiction.imageUrl`. */
+export const LOCAL_LEGISLATOR_IMAGE_PREFIX = "/images/legislators";
+
+/**
+ * Default Congress.gov API cache directory (`memberUpdateDates` / `memberImageDates` sidecars).
+ *
+ * @returns `{cwd}/.cache/congress`
+ */
+export function defaultCongressCacheDir(): string {
+  return path.join(process.cwd(), ".cache", "congress");
+}
+
+/**
+ * Path to the member list `updateDate` sidecar written by {@link Legislators.getAllLegislators}.
+ *
+ * @param cacheDir - Congress API cache directory
+ * @param congress - Congressional term
+ */
+export function memberUpdateDatesPath(cacheDir: string, congress: number): string {
+  return path.join(cacheDir, `memberUpdateDates-${congress}.json`);
+}
+
+/**
+ * Path to the last-fetched portrait `updateDate` sidecar.
+ *
+ * @param cacheDir - Congress API cache directory
+ * @param congress - Congressional term
+ */
+export function memberImageDatesPath(cacheDir: string, congress: number): string {
+  return path.join(cacheDir, `memberImageDates-${congress}.json`);
+}
+
+/**
+ * Reads a bioguide → date JSON map from disk.
+ *
+ * @param filePath - Sidecar JSON path
+ * @param fsModule - fs implementation
+ * @returns Empty map when the file is missing or invalid
+ */
+export function readMemberDateSidecar(
+  filePath: string,
+  fsModule: typeof fs = fs,
+): Map<string, string> {
+  try {
+    const raw = fsModule.readFileSync(filePath, "utf8");
+    return new Map(Object.entries(JSON.parse(raw) as Record<string, string>));
+  } catch {
+    return new Map();
+  }
+}
+
+/**
+ * Writes a bioguide → date JSON map to disk.
+ *
+ * @param filePath - Sidecar JSON path
+ * @param dates - Map to persist
+ * @param fsModule - fs implementation
+ */
+export function writeMemberDateSidecar(
+  filePath: string,
+  dates: Map<string, string>,
+  fsModule: typeof fs = fs,
+): void {
+  fsModule.mkdirSync(path.dirname(filePath), { recursive: true });
+  fsModule.writeFileSync(filePath, JSON.stringify(Object.fromEntries(dates), null, 2), "utf8");
+}
+
+/**
+ * Local URL path for a cached legislator image filename.
+ *
+ * @param filename - `{bioguideId}{ext}`
+ */
+export function localLegislatorImageUrl(filename: string): string {
+  return `${LOCAL_LEGISLATOR_IMAGE_PREFIX}/${filename}`;
+}
+
+/**
+ * Filename used when saving a legislator portrait (`{bioguideId}{ext}`).
+ *
+ * @param imageUrl - Remote or local image URL
+ * @param bioguideId - Member bioguide id
+ */
+export function legislatorImageFilename(imageUrl: string, bioguideId: string): string {
+  const urlExt = path.extname(new URL(imageUrl).pathname).toLowerCase();
+  return `${bioguideId}${urlExt || ".jpg"}`;
+}
+
+/**
+ * Whether to GET the remote portrait: missing file, or member `updateDate` differs from last image fetch.
+ *
+ * @param destExists - True if `imagesDir/{bioguide}{ext}` already exists
+ * @param currentUpdateDate - Member list `updateDate` (undefined if sidecar missing)
+ * @param lastImageUpdateDate - `updateDate` recorded at last successful image fetch
+ */
+export function legislatorImageNeedsDownload(
+  destExists: boolean,
+  currentUpdateDate: string | undefined,
+  lastImageUpdateDate: string | undefined,
+): boolean {
+  return !destExists || currentUpdateDate !== lastImageUpdateDate;
+}
+
+/**
+ * Reduces a full {@link Legislator} to the site-oriented {@link LegislatorSmall} shape.
+ *
+ * @param legislator - Merged legislator record
+ * @returns Compact legislator fields including `imageUrl` from depiction
+ */
 export function reduceLegislator(legislator: Legislator): LegislatorSmall {
   let nameTitle = '';
   if (legislator.latest_term?.type === 'sen') {
@@ -40,6 +148,11 @@ export interface GetLegislatorsOptions {
   congress?: number;
   /** If set, download legislator images to this directory and update imageUrl to local path. */
   imagesDir?: string;
+  /**
+   * Congress API cache directory for `memberUpdateDates` / `memberImageDates` sidecars.
+   * Defaults to {@link defaultCongressCacheDir}.
+   */
+  congressCacheDir?: string;
 }
 
 /** Strip `updateDate` recursively so we can detect no-op API refreshes. */
@@ -76,9 +189,35 @@ function shouldSkipIdenticalLegislatorFile(
 type HttpGetFn = (url: string, callback: (res: any) => void) => { on: (event: string, cb: (...args: any[]) => void) => void };
 
 /**
+ * Resolves to a local image URL if the dest file exists; otherwise the original remote URL.
+ *
+ * @param destPath - On-disk image path
+ * @param filename - `{bioguideId}{ext}`
+ * @param imageUrl - Original remote URL (fallback when dest is missing)
+ * @param fsModule - fs implementation
+ */
+function localImageUrlOrOriginal(
+  destPath: string,
+  filename: string,
+  imageUrl: string,
+  fsModule: typeof fs,
+): string {
+  return fsModule.existsSync(destPath) ? localLegislatorImageUrl(filename) : imageUrl;
+}
+
+/**
  * Downloads a legislator's image to imagesDir/{bioguideId}.{ext}.
- * Skips if the file already exists (acts as permanent cache).
- * Returns the local URL path (e.g. /images/legislators/A000001.jpg) or the original if download fails.
+ * Skips the HTTP GET when the file exists and `forceRefresh` is false.
+ * When `forceRefresh` is true, overwrites an existing file.
+ *
+ * @param imageUrl - Remote portrait URL
+ * @param bioguideId - Member bioguide id
+ * @param imagesDir - Destination directory
+ * @param fsModule - fs implementation
+ * @param httpsGet - HTTPS GET (injectable for tests)
+ * @param httpGet - HTTP GET (injectable for tests)
+ * @param forceRefresh - When true, re-download even if the dest file exists
+ * @returns Local URL path (e.g. /images/legislators/A000001.jpg) or the original if download fails and no dest file remains
  */
 export async function downloadLegislatorImage(
   imageUrl: string,
@@ -87,61 +226,66 @@ export async function downloadLegislatorImage(
   fsModule: typeof fs = fs,
   httpsGet: HttpGetFn = https.get,
   httpGet: HttpGetFn = http.get,
+  forceRefresh: boolean = false,
 ): Promise<string> {
-  const urlObj = new URL(imageUrl);
-  const urlExt = path.extname(urlObj.pathname).toLowerCase();
-  const ext = urlExt || '.jpg';
-  const filename = `${bioguideId}${ext}`;
+  const filename = legislatorImageFilename(imageUrl, bioguideId);
   const destPath = path.join(imagesDir, filename);
+  const localUrl = localLegislatorImageUrl(filename);
 
-  if (fsModule.existsSync(destPath)) {
-    return `/images/legislators/${filename}`;
+  if (fsModule.existsSync(destPath) && !forceRefresh) {
+    return localUrl;
   }
 
   return new Promise((resolve) => {
+    const urlObj = new URL(imageUrl);
     const requestGet = urlObj.protocol === 'https:' ? httpsGet : httpGet;
     const req = requestGet(imageUrl, (res) => {
       if (res.statusCode === 301 || res.statusCode === 302) {
         const redirectUrl = res.headers.location;
         if (redirectUrl) {
-          downloadLegislatorImage(redirectUrl, bioguideId, imagesDir, fsModule, httpsGet, httpGet)
+          downloadLegislatorImage(redirectUrl, bioguideId, imagesDir, fsModule, httpsGet, httpGet, forceRefresh)
             .then(resolve)
-            .catch(() => resolve(imageUrl));
+            .catch(() => resolve(localImageUrlOrOriginal(destPath, filename, imageUrl, fsModule)));
         } else {
-          resolve(imageUrl);
+          resolve(localImageUrlOrOriginal(destPath, filename, imageUrl, fsModule));
         }
         return;
       }
       if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
         console.warn(`Failed to download image for ${bioguideId}: HTTP ${res.statusCode}`);
-        resolve(imageUrl);
+        resolve(localImageUrlOrOriginal(destPath, filename, imageUrl, fsModule));
         return;
       }
       const fileStream = fsModule.createWriteStream(destPath);
       res.pipe(fileStream);
       fileStream.on('finish', () => {
         fileStream.close();
-        resolve(`/images/legislators/${filename}`);
+        resolve(localUrl);
       });
       fileStream.on('error', () => {
         console.warn(`Failed to write image for ${bioguideId}`);
-        resolve(imageUrl);
+        resolve(localImageUrlOrOriginal(destPath, filename, imageUrl, fsModule));
       });
     });
     req.on('error', () => {
       console.warn(`Failed to download image for ${bioguideId}`);
-      resolve(imageUrl);
+      resolve(localImageUrlOrOriginal(destPath, filename, imageUrl, fsModule));
     });
   });
 }
 
 /**
- * Generates legislators data and writes one JSON file per legislator to outputDir
+ * Generates legislators data and writes one JSON file per legislator to outputDir.
+ * When `imagesDir` is set, downloads portraits when missing or when the member list
+ * `updateDate` differs from the last image fetch (see `memberImageDates-{congress}.json`).
+ *
  * @param outputDir - Directory to write [bioguideid].json files (defaults to .cache/legislators)
  * @param small - Whether to reduce legislator data to small format
- * @param options - Optional. congress: which congressional term to fetch (default 119)
+ * @param options - congress, imagesDir, congressCacheDir
  * @param fsModule - Optional custom fs module (for testing)
  * @param LegislatorsClass - Optional Legislators class (for testing)
+ * @param httpsGet - Optional HTTPS GET (for testing image downloads)
+ * @param httpGet - Optional HTTP GET (for testing image downloads)
  */
 export async function getLegislators(
   outputDir?: string,
@@ -155,6 +299,7 @@ export async function getLegislators(
   const finalOutputDir = outputDir ?? path.join(process.cwd(), '.cache', 'legislators');
   const congress = options?.congress ?? 119;
   const imagesDir = options?.imagesDir;
+  const congressCacheDir = options?.congressCacheDir ?? defaultCongressCacheDir();
   console.log(`Generating legislators data...`);
   console.log(`Output directory: ${finalOutputDir}`);
   console.log(`Small: ${small}`);
@@ -173,21 +318,56 @@ export async function getLegislators(
     console.log(`Created images directory: ${imagesDir}`);
   }
 
-  // Optionally download images and rewrite imageUrl
   let processedLegislators: Legislator[] = rawLegislators;
   if (imagesDir) {
+    const memberUpdateDates = readMemberDateSidecar(
+      memberUpdateDatesPath(congressCacheDir, congress),
+      fsModule,
+    );
+    const imageDatesFile = memberImageDatesPath(congressCacheDir, congress);
+    const memberImageDates = readMemberDateSidecar(imageDatesFile, fsModule);
     let imageCount = 0;
+    let imageDatesDirty = false;
+
     processedLegislators = await Promise.all(
       rawLegislators.map(async (leg) => {
         if (!leg.depiction?.imageUrl) return leg;
-        const localUrl = await downloadLegislatorImage(leg.depiction.imageUrl, leg.bioguideId, imagesDir, fsModule, httpsGet, httpGet);
+        const filename = legislatorImageFilename(leg.depiction.imageUrl, leg.bioguideId);
+        const destPath = path.join(imagesDir, filename);
+        const destExists = fsModule.existsSync(destPath);
+        const currentDate = memberUpdateDates.get(leg.bioguideId);
+        const lastImageDate = memberImageDates.get(leg.bioguideId);
+        const needsDownload = legislatorImageNeedsDownload(destExists, currentDate, lastImageDate);
+        const forceRefresh = destExists && needsDownload;
+        const localUrl = needsDownload
+          ? await downloadLegislatorImage(
+              leg.depiction.imageUrl,
+              leg.bioguideId,
+              imagesDir,
+              fsModule,
+              httpsGet,
+              httpGet,
+              forceRefresh,
+            )
+          : localLegislatorImageUrl(filename);
         if (localUrl !== leg.depiction.imageUrl) imageCount++;
+        if (
+          currentDate !== undefined &&
+          localUrl.startsWith(LOCAL_LEGISLATOR_IMAGE_PREFIX) &&
+          lastImageDate !== currentDate
+        ) {
+          memberImageDates.set(leg.bioguideId, currentDate);
+          imageDatesDirty = true;
+        }
         return {
           ...leg,
           depiction: { ...leg.depiction, imageUrl: localUrl },
         };
       })
     );
+    if (imageDatesDirty) {
+      writeMemberDateSidecar(imageDatesFile, memberImageDates, fsModule);
+    }
     console.log(`Downloaded/verified ${imageCount} images`);
   }
 

@@ -9,6 +9,7 @@ import {
   buildLegislatorsFromCache,
   downloadLegislatorImage,
   legislatorJsonWithoutUpdateDates,
+  legislatorImageNeedsDownload,
 } from "./legislators.js";
 import { wrapFsWithThrow } from "../utils/mocks/wrap-fs-with-throw.js";
 import { MockLegislators, mockLegislatorsOutput } from "../legislators/mocks/mock-legislators.js";
@@ -302,6 +303,80 @@ describe("CLI Legislators Module", () => {
       assert.strictEqual(written.depiction.imageUrl, "/images/legislators/A000001.jpg", "imageUrl should point to local path when file already exists");
     });
 
+    test("skips image download when member updateDate matches last image fetch", async () => {
+      const outputDir = "/test";
+      const imagesDir = "/images";
+      const congressCacheDir = "/cache/congress";
+      mock({
+        "/images/A000001.jpg": "cached-bytes",
+        [`${congressCacheDir}/memberUpdateDates-119.json`]: JSON.stringify({ A000001: "2024-01-01" }),
+        [`${congressCacheDir}/memberImageDates-119.json`]: JSON.stringify({ A000001: "2024-01-01" }),
+      });
+      let getCalls = 0;
+      const mockGet = (url: string, callback: (res: any) => void) => {
+        getCalls++;
+        return createMockHttpGet({ statusCode: 404 })(url, callback);
+      };
+      MockLegislators.setMockLegislators([
+        { ...mockLegislatorsOutput[0], depiction: { imageUrl: "https://example.com/A000001.jpg" } },
+      ] as any);
+      await getLegislators(
+        outputDir,
+        false,
+        { imagesDir, congressCacheDir },
+        fs,
+        MockLegislators as any,
+        mockGet as any,
+        mockGet as any,
+      );
+      assert.strictEqual(getCalls, 0, "should not GET when dates match and file exists");
+      assert.strictEqual(fs.readFileSync(`${imagesDir}/A000001.jpg`, "utf-8"), "cached-bytes");
+      const written = JSON.parse(fs.readFileSync(`${outputDir}/A000001.json`, "utf-8"));
+      assert.strictEqual(written.depiction.imageUrl, "/images/legislators/A000001.jpg");
+    });
+
+    test("re-downloads image when member updateDate differs from last image fetch", async () => {
+      const outputDir = "/test";
+      const imagesDir = "/images";
+      const congressCacheDir = "/cache/congress";
+      mock({
+        "/images/A000001.jpg": "stale-bytes",
+        [`${congressCacheDir}/memberUpdateDates-119.json`]: JSON.stringify({ A000001: "2025-06-01" }),
+        [`${congressCacheDir}/memberImageDates-119.json`]: JSON.stringify({ A000001: "2024-01-01" }),
+      });
+      const mockGet = createMockHttpGet({ statusCode: 200 });
+      MockLegislators.setMockLegislators([
+        { ...mockLegislatorsOutput[0], depiction: { imageUrl: "https://example.com/A000001.jpg" } },
+      ] as any);
+      await getLegislators(
+        outputDir,
+        false,
+        { imagesDir, congressCacheDir },
+        fs,
+        MockLegislators as any,
+        mockGet,
+        mockGet,
+      );
+      assert.notStrictEqual(fs.readFileSync(`${imagesDir}/A000001.jpg`, "utf-8"), "stale-bytes");
+      const imageDates = JSON.parse(fs.readFileSync(`${congressCacheDir}/memberImageDates-119.json`, "utf-8"));
+      assert.strictEqual(imageDates.A000001, "2025-06-01");
+      const written = JSON.parse(fs.readFileSync(`${outputDir}/A000001.json`, "utf-8"));
+      assert.strictEqual(written.depiction.imageUrl, "/images/legislators/A000001.jpg");
+    });
+
+    test("downloads image when file is missing even if dates are unset", async () => {
+      const outputDir = "/test";
+      const imagesDir = "/images";
+      const mockGet = createMockHttpGet({ statusCode: 200 });
+      MockLegislators.setMockLegislators([
+        { ...mockLegislatorsOutput[0], depiction: { imageUrl: "https://example.com/A000001.jpg" } },
+      ] as any);
+      await getLegislators(outputDir, false, { imagesDir }, fs, MockLegislators as any, mockGet, mockGet);
+      assert.ok(fs.existsSync(`${imagesDir}/A000001.jpg`));
+      const written = JSON.parse(fs.readFileSync(`${outputDir}/A000001.json`, "utf-8"));
+      assert.strictEqual(written.depiction.imageUrl, "/images/legislators/A000001.jpg");
+    });
+
     test("should update imageUrl to local path after download", async () => {
       const outputDir = "/test";
       const imagesDir = "/images";
@@ -424,6 +499,23 @@ describe("CLI Legislators Module", () => {
   });
 });
 
+describe("legislatorImageNeedsDownload", () => {
+  test("downloads when dest is missing", () => {
+    assert.strictEqual(legislatorImageNeedsDownload(false, "2024-01-01", "2024-01-01"), true);
+    assert.strictEqual(legislatorImageNeedsDownload(false, undefined, undefined), true);
+  });
+
+  test("skips when dest exists and dates match", () => {
+    assert.strictEqual(legislatorImageNeedsDownload(true, "2024-01-01", "2024-01-01"), false);
+    assert.strictEqual(legislatorImageNeedsDownload(true, undefined, undefined), false);
+  });
+
+  test("downloads when dest exists and dates differ", () => {
+    assert.strictEqual(legislatorImageNeedsDownload(true, "2025-06-01", "2024-01-01"), true);
+    assert.strictEqual(legislatorImageNeedsDownload(true, "2025-06-01", undefined), true);
+  });
+});
+
 describe("downloadLegislatorImage", () => {
   afterEach(() => {
     mock.restore();
@@ -439,6 +531,43 @@ describe("downloadLegislatorImage", () => {
       fs,
     );
     assert.strictEqual(result, "/images/legislators/A000001.jpg");
+  });
+
+  test("re-downloads when forceRefresh is true and file exists", async () => {
+    mock({ "/images/A000001.jpg": "stale" });
+    let getCalls = 0;
+    const mockGet = (url: string, callback: (res: any) => void) => {
+      getCalls++;
+      return createMockHttpGet({ statusCode: 200 })(url, callback);
+    };
+    const result = await downloadLegislatorImage(
+      "https://example.com/A000001.jpg",
+      "A000001",
+      "/images",
+      fs,
+      mockGet as any,
+      mockGet as any,
+      true,
+    );
+    assert.strictEqual(result, "/images/legislators/A000001.jpg");
+    assert.strictEqual(getCalls, 1);
+    assert.notStrictEqual(fs.readFileSync("/images/A000001.jpg", "utf-8"), "stale");
+  });
+
+  test("keeps local path when forceRefresh download fails and dest exists", async () => {
+    mock({ "/images/A000001.jpg": "stale" });
+    const mockGet = createMockHttpGet({ statusCode: 404 });
+    const result = await downloadLegislatorImage(
+      "https://example.com/A000001.jpg",
+      "A000001",
+      "/images",
+      fs,
+      mockGet,
+      mockGet,
+      true,
+    );
+    assert.strictEqual(result, "/images/legislators/A000001.jpg");
+    assert.strictEqual(fs.readFileSync("/images/A000001.jpg", "utf-8"), "stale");
   });
 
   test("returns local path after successful HTTPS download", async () => {
