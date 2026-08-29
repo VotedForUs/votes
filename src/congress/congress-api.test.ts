@@ -742,6 +742,8 @@ describe("CongressApi", () => {
       // Check vote data
       const votes = action.recordedVotes[0].votes;
       assert.ok(votes["A000001"]); // Should have vote for member A000001
+      assert.strictEqual(action.recordedVotes[0].recordType, "roll-call");
+      assert.strictEqual(action.recordedVotes[0].membersAtAction, undefined);
       
       // Should have called both vote details and members endpoints
       assert.strictEqual(fetchMock.callHistory.calls().length, 5); // bill, actions, titles, voteDetails, and members
@@ -786,6 +788,9 @@ describe("CongressApi", () => {
       assert.ok(recordedVote.senateCount);
       assert.strictEqual(recordedVote.senateCount.yeas, "51");
       assert.strictEqual(recordedVote.senateCount.nays, "50");
+      assert.ok(recordedVote.votePartyTotal);
+      assert.strictEqual(recordedVote.recordType, "roll-call");
+      assert.strictEqual(recordedVote.membersAtAction, undefined);
     });
 
     test("should exclude Library of Congress actions when includeActions='all'", async () => {
@@ -1999,7 +2004,7 @@ describe("CongressApi", () => {
       assert.strictEqual(result[1].recordedVotes![0].id, "119-HR-100-1");
     });
 
-    test("should populate Senate unanimous consent with Passed by Unanimous Consent and canonical votePartyTotal", async () => {
+    test("should populate Senate unanimous consent with recordType and membership, not fabricated casts", async () => {
       const ucAction = {
         actionDate: "2024-06-15",
         text: "Received in the Senate, read twice, and passed without amendment by Unanimous Consent.",
@@ -2017,18 +2022,18 @@ describe("CongressApi", () => {
       assert.strictEqual(result[0].recordedVotes!.length, 1);
       const rv = result[0].recordedVotes![0];
       assert.strictEqual(rv.result, "passed");
-      assert.ok(rv.votePartyTotal);
-      const parties = new Set(rv.votePartyTotal!.map((p) => p.voteParty));
-      for (const p of parties) {
-        assert.ok(
-          p === "Republican" || p === "Democrat" || p === "Independent",
-          `voteParty should be Republican, Democrat, or Independent, got ${p}`
-        );
-      }
-      assert.ok(typeof (rv as any).senateCount?.yeas === "number");
+      assert.strictEqual(rv.question, "Pass with Unanimous Consent");
+      assert.ok(rv.voteUrl);
+      assert.strictEqual(rv.recordType, "unanimous-consent");
+      assert.strictEqual(rv.votePartyTotal, undefined);
+      assert.strictEqual(rv.senateCount, undefined);
+      assert.deepStrictEqual(rv.votes, {});
+      const expectedIds = congressApi.getSenateBioguideIdsWithParty("2024-06-15").map((m) => m.bioguideId);
+      assert.deepStrictEqual(rv.membersAtAction, expectedIds);
+      assert.ok(expectedIds.length > 0, "mock Senate membership on 2024-06-15 should be non-empty");
     });
 
-    test("should populate Senate voice vote with vv for each senator and result from text", async () => {
+    test("should populate Senate voice vote with empty votes and recordType voice", async () => {
       const voiceVoteAction = {
         actionDate: "2024-06-15",
         text: "Motion to proceed to consideration of measure agreed to in Senate by Voice Vote.",
@@ -2048,13 +2053,15 @@ describe("CongressApi", () => {
       assert.strictEqual(rv.chamber, "Senate");
       assert.strictEqual(rv.result, "passed");
       assert.strictEqual(rv.question, "Voice Vote");
-      assert.ok(rv.votes);
-      const voteValues = Object.values(rv.votes!);
-      assert.ok(voteValues.length > 0);
-      assert.ok(voteValues.every((v) => v === "vv"));
+      assert.strictEqual(rv.recordType, "voice");
+      assert.strictEqual(Object.keys(rv.votes ?? {}).length, 0);
+      assert.strictEqual(rv.votePartyTotal, undefined);
+      assert.strictEqual(rv.senateCount, undefined);
+      const expectedIds = congressApi.getSenateBioguideIdsWithParty("2024-06-15").map((m) => m.bioguideId);
+      assert.deepStrictEqual(rv.membersAtAction, expectedIds);
     });
 
-    test("should populate House voice vote with vv for each representative", async () => {
+    test("should populate House voice vote with empty votes and recordType voice", async () => {
       const voiceVoteAction = {
         actionDate: "2024-06-15",
         text: "On motion to suspend the rules and pass the bill Agreed to by voice vote.",
@@ -2074,10 +2081,12 @@ describe("CongressApi", () => {
       assert.strictEqual(rv.chamber, "House");
       assert.strictEqual(rv.result, "passed");
       assert.strictEqual(rv.question, "Voice Vote");
-      assert.ok(rv.votes);
-      const voteValues = Object.values(rv.votes!);
-      assert.ok(voteValues.length > 0);
-      assert.ok(voteValues.every((v) => v === "vv"));
+      assert.strictEqual(rv.recordType, "voice");
+      assert.strictEqual(Object.keys(rv.votes ?? {}).length, 0);
+      assert.strictEqual(rv.votePartyTotal, undefined);
+      const expectedIds = congressApi.getHouseBioguideIdsWithParty("2024-06-15").map((m) => m.bioguideId);
+      assert.deepStrictEqual(rv.membersAtAction, expectedIds);
+      assert.ok(expectedIds.length > 0, "mock House membership on 2024-06-15 should be non-empty");
     });
 
     test("should set chamber House for voice vote when sourceSystem is House floor actions", async () => {
@@ -2115,7 +2124,7 @@ describe("CongressApi", () => {
       assert.strictEqual(result[0].recordedVotes![0].result, "rejected");
     });
 
-    test("should populate House passage by unanimous consent with UC for each representative", async () => {
+    test("should populate House passage by unanimous consent with membership, not UC casts", async () => {
       const ucAction = {
         actionCode: "H37100",
         actionDate: "2024-06-15",
@@ -2137,13 +2146,13 @@ describe("CongressApi", () => {
       assert.strictEqual(rv.result, "passed");
       assert.strictEqual(rv.question, "Pass with Unanimous Consent");
       assert.strictEqual(rv.rollNumber, 0);
-      assert.ok(rv.votes, "votes map should be populated");
-      const voteValues = Object.values(rv.votes!);
-      assert.ok(voteValues.length > 0, "should have at least one rep with vote");
-      assert.ok(voteValues.every((v) => v === "UC"), "all reps should be marked UC");
-      // House UC should not produce senateCount
-      assert.strictEqual((rv as any).senateCount, undefined);
-      assert.ok(Array.isArray(rv.votePartyTotal));
+      assert.strictEqual(rv.recordType, "unanimous-consent");
+      assert.deepStrictEqual(rv.votes, {});
+      assert.strictEqual(rv.votePartyTotal, undefined);
+      assert.strictEqual(rv.senateCount, undefined);
+      const expectedIds = congressApi.getHouseBioguideIdsWithParty("2024-06-15").map((m) => m.bioguideId);
+      assert.deepStrictEqual(rv.membersAtAction, expectedIds);
+      assert.strictEqual(rv.membersAtAction!.length, expectedIds.length);
     });
 
     test("should not synthesize House UC when actual recordedVotes exist on the action", async () => {

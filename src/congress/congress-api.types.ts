@@ -20,11 +20,21 @@ import {
 // These are types that combine or extend API types for business logic
 
 /**
- * Chamber vote results mapped by bioguide ID
- * Key: bioguideId, Value: vote cast (e.g., "Yea", "Nay", "Present", "Not Voting")
+ * How the chamber acted. Only "roll-call" has per-member positions.
+ */
+export type VoteRecordType = "roll-call" | "unanimous-consent" | "voice";
+
+/**
+ * A recorded roll-call cast. Synthetic codes ("UC", "vv") are not casts.
+ */
+export type VoteCast = "Yea" | "Nay" | "Present" | "Not Voting";
+
+/**
+ * Chamber vote results mapped by bioguide ID.
+ * Key: bioguideId, Value: {@link VoteCast}
  */
 export type ChamberVote = {
-  [bioguideId: string]: string;
+  [bioguideId: string]: VoteCast;
 }
 
 /**
@@ -48,9 +58,12 @@ export type BillState = "becameLaw" | "inProgress" | "rejected";
 export type HouseVoteData = {
   votes: ChamberVote;
   result: VoteResult;
-  votePartyTotal: HouseVotePartyTotal[];
+  votePartyTotal?: HouseVotePartyTotal[];
   voteUrl: string;
   question: string;
+  recordType: VoteRecordType;
+  /** Bioguide ids serving in the acting chamber on the action date. Non-roll-call only. */
+  membersAtAction?: string[];
 }
 
 /**
@@ -60,10 +73,13 @@ export type HouseVoteData = {
 export type SenateVoteData = {
   votes: ChamberVote;
   result: VoteResult;
-  senateCount: SenateRollCallVoteCount;
+  senateCount?: SenateRollCallVoteCount;
   votePartyTotal?: HouseVotePartyTotal[];
   voteUrl: string;
   question: string;
+  recordType: VoteRecordType;
+  /** Bioguide ids serving in the acting chamber on the action date. Non-roll-call only. */
+  membersAtAction?: string[];
 }
 
 export type RecordedVoteWithVotes = RecordedVote & {
@@ -80,6 +96,10 @@ export type RecordedVoteWithVotes = RecordedVote & {
   // Common fields
   voteUrl?: string;
   question?: string;
+  /** How the chamber acted. Present on every vote after populateRecordedVotes. */
+  recordType?: VoteRecordType;
+  /** Bioguide ids serving in the acting chamber on the action date. Non-roll-call only. */
+  membersAtAction?: string[];
 }
 
 /**
