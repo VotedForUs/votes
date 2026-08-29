@@ -81,7 +81,7 @@ Implemented in `CongressApi` / related helpers (broader than roll-call only):
 3. House “on passage … without objection” style cases (as coded)
 4. Floor **voice votes**, excluding actions that demand yeas/nays or a recorded vote
 
-Synthetic votes typically use `rollNumber: 0` and empty `url`; members marked UC / `vv` as implemented.
+Synthetic votes use `rollNumber: 0`, empty `url`, `recordType` `"unanimous-consent"` or `"voice"`, empty `votes`, and `membersAtAction` (ids only). They do not invent per-member casts.
 
 Also: `shouldKeepAction` drops most Library of Congress actions except President / BecameLaw.
 

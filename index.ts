@@ -53,6 +53,8 @@ export type {
   BillState,
   ChamberVote,
   BillChamberVotes,
+  VoteCast,
+  VoteRecordType,
 } from './src/congress/congress-api.types.js';
 // Changelog utilities
 export { generateChangeSummary, buildMarkdown } from './src/cli/changelog.js';

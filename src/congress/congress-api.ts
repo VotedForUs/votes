@@ -7,7 +7,7 @@ import { XmlUtils } from "../utils/xml-utils.js";
 import { getCacheFilePath, readCacheFile } from "../utils/fetchUtils.js";
 import type { SenateRollCallVoteXml, SenateRollCallVoteMember } from "./congress-raw-files.types.js";
 import type { HouseVotePartyTotal } from "../api-congress-gov/abstract-api.types.js";
-import { BillWithActions, ChamberVote, BillActionWithVotes, SenateVoteData, HouseVoteData, PopulateRecordedVotesParams, RecordedVoteWithVotes, VoteResult, BillState } from "./congress-api.types.js";
+import { BillWithActions, ChamberVote, BillActionWithVotes, SenateVoteData, HouseVoteData, PopulateRecordedVotesParams, RecordedVoteWithVotes, VoteCast, VoteResult, BillState } from "./congress-api.types.js";
 import { ACTION_CODES } from "./constants.js";
 import { BillAction, BillLatestAction, RecordedVote, BaseBillSummary, ExtendedBillSummary, BillTitle, BillListResponse } from "../api-congress-gov/abstract-api.types.js";
 
@@ -118,14 +118,61 @@ export class CongressApi extends Legislators {
   }
 
   /**
-   * Normalize raw party string to canonical voteParty: Republican, Democrat, or Independent.
+   * Maps a raw feed cast string onto {@link VoteCast}. Unknown values become Not Voting.
+   *
+   * @param raw Cast text from House or Senate feeds
+   * @returns One of the four recorded casts
    */
-  private normalizeVoteParty(party: string): "Republican" | "Democrat" | "Independent" {
-    const p = (party ?? "").trim().toLowerCase();
-    if (p === "republican" || p === "r") return "Republican";
-    if (p === "democrat" || p === "d") return "Democrat";
-    if (p === "independent" || p === "id" || p === "i") return "Independent";
-    return "Independent";
+  private normalizeVoteCast(raw: string): VoteCast {
+    const v = (raw ?? "").trim().toLowerCase();
+    if (v === "yea" || v === "aye") return "Yea";
+    if (v === "nay" || v === "no") return "Nay";
+    if (v === "present") return "Present";
+    if (v === "not voting" || v === "absent" || v === "notvoting") return "Not Voting";
+    if (v.length > 0 && v !== "uc" && v !== "vv") {
+      console.warn(`Unrecognized vote cast "${raw}"; treating as Not Voting`);
+    }
+    return "Not Voting";
+  }
+
+  /**
+   * Copies builder output onto a recorded vote without writing fabricated totals.
+   *
+   * @param recordedVote Vote being populated
+   * @param data House or Senate builder result
+   */
+  private applyVoteDataToRecordedVote(
+    recordedVote: RecordedVoteWithVotes,
+    data: HouseVoteData | SenateVoteData
+  ): void {
+    recordedVote.votes = data.votes;
+    recordedVote.result = data.result;
+    recordedVote.voteUrl = data.voteUrl;
+    recordedVote.question = data.question;
+    recordedVote.recordType = data.recordType;
+    if (data.membersAtAction) {
+      recordedVote.membersAtAction = data.membersAtAction;
+    }
+    if (data.votePartyTotal) {
+      recordedVote.votePartyTotal = data.votePartyTotal;
+    }
+    if ("senateCount" in data && data.senateCount) {
+      recordedVote.senateCount = data.senateCount;
+    }
+  }
+
+  /**
+   * Bioguide ids for the acting chamber on the action date.
+   *
+   * @param chamber Acting chamber
+   * @param asOfDate ISO date (YYYY-MM-DD)
+   * @returns Membership list, not positions
+   */
+  private membersAtActionFor(chamber: "Senate" | "House", asOfDate: string): string[] {
+    const members = chamber === "Senate"
+      ? this.getSenateBioguideIdsWithParty(asOfDate)
+      : this.getHouseBioguideIdsWithParty(asOfDate);
+    return members.map((member) => member.bioguideId);
   }
 
   /**
@@ -139,7 +186,7 @@ export class CongressApi extends Legislators {
 
   /**
    * Returns true if the action text indicates a Senate pass by unanimous consent without amendment.
-   * Such actions have no roll call but are treated as recorded votes with all senators as UC.
+   * Such actions have no roll call; they are included as recorded votes with recordType unanimous-consent.
    */
   private isSenateUnanimousConsentPass(action: BillAction): boolean {
     if (!shouldKeepAction(action) || !action.text) return false;
@@ -153,7 +200,7 @@ export class CongressApi extends Legislators {
 
   /**
    * Returns true if the action text indicates a House passage by unanimous consent / without objection.
-   * Such actions have no roll call but are treated as recorded votes with all representatives as UC.
+   * Such actions have no roll call; they are included as recorded votes with recordType unanimous-consent.
    * Matches House Floor passage actions like "On passage Passed without objection".
    * Excludes non-passage "without objection" floor actions (e.g. "Motion to reconsider laid on the table").
    */
@@ -178,8 +225,8 @@ export class CongressApi extends Legislators {
 
   /**
    * Returns true if the action is a floor action where a voice vote was used to pass or reject
-   * (and no recorded vote was demanded). Such actions get a synthetic recorded vote with each
-   * legislator marked as 'vv' (voice vote).
+   * (and no recorded vote was demanded). Such actions get a synthetic recorded vote with
+   * recordType "voice" and a membership list, not per-member casts.
    */
   private isVoiceVoteChamberVote(action: BillAction): boolean {
     if (!shouldKeepAction(action) || !action.text) return false;
@@ -329,7 +376,7 @@ export class CongressApi extends Legislators {
       // Convert to ChamberVote format (bioguideId -> vote)
       const chamberVote: ChamberVote = {};
       for (const member of members) {
-        chamberVote[member.bioguideID] = member.voteCast;
+        chamberVote[member.bioguideID] = this.normalizeVoteCast(member.voteCast);
       }
 
       return {
@@ -337,7 +384,8 @@ export class CongressApi extends Legislators {
         result: this.normalizeVoteResult(houseRollCallVote.result),
         votePartyTotal: houseRollCallVote.votePartyTotal,
         voteUrl: houseRollCallVote.sourceDataURL,
-        question: houseRollCallVote.voteQuestion
+        question: houseRollCallVote.voteQuestion,
+        recordType: "roll-call",
       };
     } catch (error) {
       console.warn(`Error fetching house votes for roll ${recordedVote.rollNumber}:`, error);
@@ -403,7 +451,7 @@ export class CongressApi extends Legislators {
           const bioguideId = this.bioguideIdFromLisMemberId(lisMemberId);
           
           if (bioguideId) {
-            chamberVote[bioguideId] = member.vote_cast;
+            chamberVote[bioguideId] = this.normalizeVoteCast(member.vote_cast);
           } else {
             // This should not happen if legislators data is complete
             console.error(`ERROR: Could not find bioguide ID for LIS member ID: ${lisMemberId} in roll ${recordedVote.rollNumber}`);
@@ -420,7 +468,8 @@ export class CongressApi extends Legislators {
         senateCount: rollCallVote.count || { yeas: '', nays: '', present: '', absent: '' },
         votePartyTotal,
         voteUrl: recordedVote.url,
-        question: rollCallVote.vote_question_text || ''
+        question: rollCallVote.vote_question_text || '',
+        recordType: "roll-call",
       };
     } catch (error) {
       console.warn(`Error fetching senate votes for roll ${recordedVote.rollNumber}:`, error);
@@ -430,11 +479,12 @@ export class CongressApi extends Legislators {
 
   /**
    * Build vote data for a chamber pass by unanimous consent / without objection (no roll call).
-   * Uses current chamber members with vote 'UC' and synthetic counts as if all members voted Yea.
+   * Publishes membership at the action date; does not invent per-member casts or tallies.
    * Uses raw legislator data only so build-from-cache never calls getLegislator/API.
-   * @param action - The chamber Floor action representing the UC pass
-   * @param params - Bill identification used to build the canonical voteUrl
-   * @param chamber - Which chamber the UC pass is from
+   *
+   * @param action The chamber Floor action representing the UC pass
+   * @param params Bill identification used to build the canonical voteUrl
+   * @param chamber Which chamber the UC pass is from
    * @returns SenateVoteData for Senate; HouseVoteData for House
    */
   private async buildUnanimousConsentVoteData(
@@ -444,54 +494,25 @@ export class CongressApi extends Legislators {
   ): Promise<SenateVoteData | HouseVoteData> {
     await this.ensureInitialized();
     const asOfDate = action.actionDate ?? new Date().toISOString().slice(0, 10);
-    const members = chamber === "Senate"
-      ? this.getSenateBioguideIdsWithParty(asOfDate)
-      : this.getHouseBioguideIdsWithParty(asOfDate);
-    const votes: ChamberVote = {};
-    const byParty = new Map<string, { yea: number; nay: number; present: number; notVoting: number }>();
-    for (const { bioguideId, party } of members) {
-      votes[bioguideId] = "UC";
-      const voteParty = this.normalizeVoteParty(party);
-      if (!byParty.has(voteParty)) byParty.set(voteParty, { yea: 0, nay: 0, present: 0, notVoting: 0 });
-      byParty.get(voteParty)!.yea += 1;
-    }
-    const votePartyTotal: HouseVotePartyTotal[] = Array.from(byParty.entries()).map(
-      ([voteParty, totals]) => ({
-        voteParty,
-        yeaTotal: totals.yea,
-        nayTotal: totals.nay,
-        presentTotal: totals.present,
-        notVotingTotal: totals.notVoting,
-      })
-    );
     const voteUrl = `https://www.congress.gov/bill/${params.congress}th-congress/${params.billType.toLowerCase()}/${params.billNumber}`;
-    const result = this.normalizeVoteResult("Passed by Unanimous Consent");
-    const question = "Pass with Unanimous Consent";
-
-    if (chamber === "Senate") {
-      const n = members.length;
-      return {
-        votes,
-        result,
-        senateCount: { yeas: n, nays: 0, present: 0, absent: 0 },
-        votePartyTotal,
-        voteUrl,
-        question,
-      };
-    }
     return {
-      votes,
-      result,
-      votePartyTotal,
+      votes: {},
+      result: this.normalizeVoteResult("Passed by Unanimous Consent"),
       voteUrl,
-      question,
+      question: "Pass with Unanimous Consent",
+      recordType: "unanimous-consent",
+      membersAtAction: this.membersAtActionFor(chamber, asOfDate),
     };
   }
 
   /**
    * Build vote data for a voice-vote chamber vote (House or Senate).
-   * Uses legislators in that chamber at action date; each gets vote 'vv'.
+   * Publishes membership at the action date; does not invent per-member casts or tallies.
    * Uses raw legislator data only so build-from-cache never calls getLegislator/API.
+   *
+   * @param action The floor action that carried by voice vote
+   * @param params Bill identification used to build the canonical voteUrl
+   * @returns SenateVoteData for Senate; HouseVoteData for House
    */
   private async buildVoiceVoteVoteData(
     action: BillAction,
@@ -500,50 +521,15 @@ export class CongressApi extends Legislators {
     await this.ensureInitialized();
     const asOfDate = action.actionDate ?? new Date().toISOString().slice(0, 10);
     const chamberName = (action.sourceSystem?.name ?? "").toLowerCase();
-    const isSenate = chamberName === "senate";
-    const members = isSenate
-      ? this.getSenateBioguideIdsWithParty(asOfDate)
-      : this.getHouseBioguideIdsWithParty(asOfDate);
-
-    const votes: ChamberVote = {};
-    const result = this.voiceVoteResultFromText(action.text ?? "");
-    const byParty = new Map<string, { yea: number; nay: number; present: number; notVoting: number }>();
-    for (const { bioguideId, party } of members) {
-      votes[bioguideId] = "vv";
-      const voteParty = this.normalizeVoteParty(party);
-      if (!byParty.has(voteParty)) byParty.set(voteParty, { yea: 0, nay: 0, present: 0, notVoting: 0 });
-      const totals = byParty.get(voteParty)!;
-      if (result === "passed") totals.yea += 1;
-      else totals.nay += 1;
-    }
-    const votePartyTotal: HouseVotePartyTotal[] = Array.from(byParty.entries()).map(
-      ([voteParty, totals]) => ({
-        voteParty,
-        yeaTotal: totals.yea,
-        nayTotal: totals.nay,
-        presentTotal: totals.present,
-        notVotingTotal: totals.notVoting,
-      })
-    );
+    const chamber: "Senate" | "House" = chamberName === "senate" ? "Senate" : "House";
     const voteUrl = `https://www.congress.gov/bill/${params.congress}th-congress/${params.billType.toLowerCase()}/${params.billNumber}`;
-
-    if (isSenate) {
-      const n = members.length;
-      return {
-        votes,
-        result,
-        senateCount: result === "passed" ? { yeas: n, nays: 0, present: 0, absent: 0 } : { yeas: 0, nays: n, present: 0, absent: 0 },
-        votePartyTotal,
-        voteUrl,
-        question: "Voice Vote",
-      };
-    }
     return {
-      votes,
-      result,
-      votePartyTotal,
+      votes: {},
+      result: this.voiceVoteResultFromText(action.text ?? ""),
       voteUrl,
       question: "Voice Vote",
+      recordType: "voice",
+      membersAtAction: this.membersAtActionFor(chamber, asOfDate),
     };
   }
 
@@ -711,11 +697,7 @@ export class CongressApi extends Legislators {
                 ? (await this.buildVoiceVoteVoteData(action, params!)) as HouseVoteData
                 : await this.fetchHouseVotesForRecordedVote(recordedVote);
             if (houseVoteData) {
-              recordedVote.votes = houseVoteData.votes;
-              recordedVote.result = houseVoteData.result;
-              recordedVote.votePartyTotal = houseVoteData.votePartyTotal;
-              recordedVote.voteUrl = houseVoteData.voteUrl;
-              recordedVote.question = houseVoteData.question;
+              this.applyVoteDataToRecordedVote(recordedVote, houseVoteData);
             }
           } else if (recordedVote.chamber.toLowerCase() === "senate") {
             const isUnanimousConsent =
@@ -727,12 +709,7 @@ export class CongressApi extends Legislators {
                 ? (await this.buildVoiceVoteVoteData(action, params)) as SenateVoteData
                 : await this.fetchSenateVotesForRecordedVote(recordedVote);
             if (senateVoteData) {
-              recordedVote.votes = senateVoteData.votes;
-              recordedVote.result = senateVoteData.result;
-              recordedVote.senateCount = senateVoteData.senateCount;
-              recordedVote.votePartyTotal = senateVoteData.votePartyTotal;
-              recordedVote.voteUrl = senateVoteData.voteUrl;
-              recordedVote.question = senateVoteData.question;
+              this.applyVoteDataToRecordedVote(recordedVote, senateVoteData);
             }
           }
         }
